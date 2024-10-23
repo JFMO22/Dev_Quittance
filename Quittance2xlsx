@@ -1,0 +1,540 @@
+#pylint:disable= 'invalid syntax (<unknown>, line 284)'
+#pylint:disable=E0602
+#pylint:disable=E0602
+#pylint:disable=W0631
+#import openpyxl # pour manip fichier excel
+#import PyPDF2 # pour lecture pdf
+#import logging  # pour journalisation pas pu sur pydroid3
+#import pathlib # optionnel pour gerer les path vers fichiers car plus utilisé
+#import os
+#import pandas as pd
+# import matplotlib.pyplot as plt
+#logging.basicConfig(filename='logs.txt', filemode='a') pour journalisation
+
+# MY TABLEAU CORRESPONDANCE IMMEUBLE
+Liste_immobilier = {"12021199":"appartement Stalingrad", "11761175":"appartement Pasteur",
+"42550091":"appartement LutherKing","42554255":"parking LutherKing","05240525":"appartement Castille"}
+
+#Table de correspondance titre du dictionnaire dans "Data_Appart" vs le titre qu'on veut afficher en tête de colonnes Excel'
+#chaque tuple a 3 infos, dans l'ordre' : numéro de colonne excel de destination, titre tel qu'il apparaitrait dans dictionnaire "Data_Appart" et titre tel qu'on veut l'inscrire dans Excel
+Titres_Prog_vs_Excel = [
+   (1,"00 Nom_Fichier_Quittance" , "Sy_Fichier"),
+   (2,"01 Date_Quittance","Sy_Date"),
+   (3,"011 Mois_Quittance","Sy_Mois"),
+   (4,"012 An_Quittance","Sy_An"),
+   (5,"02 Type_Solde_Global","Sy_Solde_Glo_Type"),
+   (6,"03 Montant_Solde_Global","Sy_Solde_Glo_Mont"),
+   (7,"051 Charge_Proprio_Total_Charges_Proprio","Sy_Charge_Proprio_Tot"),
+   (8,"081 Type_Detail_Solde_1","Sy_Detail_Solde1_Type"),
+   (9,"082 Montant_Detail_Solde_1","Sy_Detail_Solde1_Mont"),
+   (10,"Appart00 Nom_Immeuble","Appart_Nom"),
+   (11,"Appart01 Date_Quittance","Appart_Date_Quitt"),
+   (12,"Appart011 Mois_Quittance","Appart_Mois_Quitt"),
+   (13,"Appart012 An_Quittance","Appart_An_Quitt"),
+   (14,"Appart051 Charge_Proprio_Total_Charges_Proprio","Appart_Charg_Prop_Tot"),
+   (15,"Appart052 Charge_Proprio_Honoraires_HT","Appart_Charge_Prop_HonoHT"),
+   (16,"Appart053 Charge_Proprio_Honoraires_TVA","Appart_Charge_Prop_HonoTVA"),
+   (17,"Appart054 Charge_Proprio_Prov_Tvx_Alur","Appart_Charge_Prop_Alur"),
+   (18,"Appart055 Charge_Proprio_Charges_Copro","Appart_Charge_Prop_ChargCopro"),
+   (19,"Appart056 Charge_Proprio_Assu_Loyer_Impaye","Appart_Charge_Prop_Assu_Impaye"),
+   (20,"Appart06 Du_Par_Loc_Loyer_Du","Appart_Loyer_Du"),
+   (21,"Appart06 Du_Par_Loc_Provision_Du","Appart_Provision_Du"),
+   (22,"Appart061 Du_Par_Loc_Total_Du","Appart_Total_Du"),
+   (23,"Appart062 Du_Par_Loc_Total_Loyer_Du","Appart_TotLoyer_Du"),
+   (24,"Appart063 Du_Par_Loc_Total_Charges_Du","Appart_TotChargDu"),
+   (25,"Appart064 Du_Par_Loc_Total_Taxes_Du","Appart_TotTaxDu"),
+   (26,"Appart065 Du_Par_Loc_Total_Divers_Du","Appart_TotDiversDu"),
+   (27,"Appart070 Regle_Par_Loc_Total_Regle","Appart_TotRegle"),
+   (28,"Appart071 Regle_Par_Loc_Total_Regle","Appart_TotRegle2"),
+   (29,"Appart072 Regle_Par_Loc_Total_Loyer_Regle","Appart_TotLoyerRegle"),
+   (30,"Appart073 Regle_Par_Loc_Total_Charges_Regle","Appart_TotChargRegle"),
+   (31,"Appart074 Regle_Par_Loc_Total_Taxes_Regle","Appart_TotTaxRegle"),
+   (32,"Appart075 Regle_Par_Loc_Total_Divers_Regle","Appart_TotDiverRegle"),
+   (33,"Appart083 Type_Detail_Solde_2","Appart_DetailSolde2_Typ"),
+   (34,"Appart084 Montant_Detail_Solde_2","Appart_DetailSolde2_Mont"),
+   (35,"Appart12 Num_Immeuble","Appart_Num_Imm"),
+   (36,"Appart28 NomPr_Locataire","Appart_NomPrenomLocat"),
+   (37,"Appart04 Ecart_Anterieur","Appart_Ecart_Anter"),
+   (38,"Appart04 Montant_Appele_Anterieur","Appart_Mont_Appele_Anter"),
+   (39,"Appart04 Montant_Regle_Anterieur","Appart_Mont_Regle_Anter"),
+   (40,"Appart085 Type_Detail_Solde_3","Appart_DetailSolde3_Typ"),
+   (41,"Appart086 Montant_Detail_Solde_3","Appart_DetailSolde3_Mont"),
+   (42,"Appart087 Type_Detail_Solde_4","Appart_DetailSolde4_Typ"),
+   (43,"Appart088 Montant_Detail_Solde_4","Appart_DetailSolde4_Mont"),
+   (44,"Appart091 Type_Detail_Solde_5","Appart_DetailSolde5_Typ"),
+   (45,"Appart092 Montant_Detail_Solde_5","Appart_DetailSolde5_Mont"),
+   (46,"Pkg00 Nom_Immeuble","Pkg_Nom"),
+   (47,"Pkg01 Date_Quittance","Pkg_Date_Quitt"),
+   (48,"Pkg011 Mois_Quittance","Pkg_Mois_Quitt"),
+   (49,"Pkg012 An_Quittance","Pkg_An_Quitt"),
+   (50,"Pkg051 Charge_Proprio_Total_Charges_Proprio","Pkg_Charg_Prop_Tot"),
+   (51,"Pkg052 Charge_Proprio_Honoraires_HT","Pkg_Charge_Prop_HonoHT"),
+   (52,"Pkg053 Charge_Proprio_Honoraires_TVA","Pkg_Charge_Prop_HonoTVA"),
+   (53,"Pkg054 Charge_Proprio_Prov_Tvx_Alur","Pkg_Charge_Prop_Alur"),
+   (54,"Pkg055 Charge_Proprio_Charges_Copro","Pkg_Charge_Prop_ChargCopro"),
+   (55,"Pkg056 Charge_Proprio_Assu_Loyer_Impaye","Pkg_Charge_Prop_Assu_Impaye"),
+   (56,"Pkg06 Du_Par_Loc_Loyer_Du","Pkg_Loyer_Du"),
+   (57,"Pkg06 Du_Par_Loc_Provision_Du","Pkg_Provision_Du"),
+   (58,"Pkg061 Du_Par_Loc_Total_Du","Pkg_Total_Du"),
+   (59,"Pkg062 Du_Par_Loc_Total_Loyer_Du","Pkg_TotLoyer_Du"),
+   (60,"Pkg063 Du_Par_Loc_Total_Charges_Du","Pkg_TotChargDu"),
+   (61,"Pkg064 Du_Par_Loc_Total_Taxes_Du","Pkg_TotTaxDu"),
+   (62,"Pkg065 Du_Par_Loc_Total_Divers_Du","Pkg_TotDiversDu"),
+   (63,"Pkg070 Regle_Par_Loc_Total_Regle","Pkg_TotRegle"),
+   (64,"Pkg071 Regle_Par_Loc_Total_Regle","Pkg_TotRegle2"),
+   (65,"Pkg072 Regle_Par_Loc_Total_Loyer_Regle","Pkg_TotLoyerRegle"),
+   (66,"Pkg073 Regle_Par_Loc_Total_Charges_Regle","Pkg_TotChargRegle"),
+   (67,"Pkg074 Regle_Par_Loc_Total_Taxes_Regle","Pkg_TotTaxRegle"),
+   (68,"Pkg075 Regle_Par_Loc_Total_Divers_Regle","Pkg_TotDiverRegle"),
+   (69,"Pkg083 Type_Detail_Solde_2","Pkg_DetailSolde2_Typ"),
+   (70,"Pkg084 Montant_Detail_Solde_2","Pkg_DetailSolde2_Mont"),
+   (71,"Pkg12 Num_Immeuble","Pkg_Num_Imm"),
+   (72,"Pkg28 NomPr_Locataire","Pkg_NomPrenomLocat"),
+   (73,"Pkg04 Ecart_Anterieur","Pkg_Ecart_Anter"),
+   (74,"Pkg04 Montant_Appele_Anterieur","Pkg_Mont_Appele_Anter"),
+   (75,"Pkg04 Montant_Regle_Anterieur","Pkg_Mont_Regle_Anter"),
+   (76,"Pkg085 Type_Detail_Solde_3","Pkg_DetailSolde3_Typ"),
+   (77,"Pkg086 Montant_Detail_Solde_3","Pkg_DetailSolde3_Mont"),
+   (78,"Pkg087 Type_Detail_Solde_4","Pkg_DetailSolde4_Typ"),
+   (79,"Pkg088 Montant_Detail_Solde_4","Pkg_DetailSolde4_Mont"),
+   (80,"Pkg091 Type_Detail_Solde_5","Pkg_DetailSolde5_Typ"),
+   (81,"Pkg092 Montant_Detail_Solde_5","Pkg_DetailSolde5_Mont"),
+   (82,"Taxe_Ordures_Menageres","Taxe Ord_Menager")
+]
+	
+#=========FONCTION REMPLACANT POINT PAR VIRGULE DANS TEXTE ET TRANSFO FLOAT===='
+def Point_par_Virgule(Mon_Texte):
+	print("LE TEXTE EN TRAITEMENT :", Mon_Texte)
+	if Mon_Texte.find(".")!=-1:
+		Mon_Texte=Mon_Texte.replace('"','')# on elimine les apostrophes car parfois, ca empeche de transformer en float
+		print("@@@@@@ ++++++++++++Mon_Texte", Mon_Texte)
+		New_Text=round(float(Mon_Texte),2)
+		print("@@@@@@ ++++++++++++  New_Texte", New_Text)		
+	else:
+		New_Text=Mon_Texte
+		print("New_Text", New_Text)
+	return New_Text
+
+#=========FONCTION EXTRAYANT LE TEXTE D'UN DOC PDF===='
+from PyPDF2 import PdfReader
+def pdf_to_text(pdf_file):
+    text = ""
+    with open(pdf_file, "rb") as file:
+        pdf_reader = PdfReader(file)
+        for i in range(len(pdf_reader.pages)):
+            Text_page = pdf_reader.pages[i].extract_text()
+            text+=Text_page
+            print(text)
+    return text
+    
+#======FONCTION EXTRAYANT DONNEES D'UNE LIGNE VERS DICTIONNAIRE=====
+# Car_ou_Mot = vaut "Car1" si on recherche par position de caractère par 1ere methode, vaut "Car2" si on recherche par position de caractère par 2e methode et vaut "Mot" si on recherche par mot
+# ligne = la ligne à traiter
+# dico = le dictionnaire recueillant les données extraites
+# indice = le string caractéristique de la ligne contenant la data recherchée
+# key_dico1 = la clé de dictionnaire à laquelle sera associée dans le dico la 1er data extraite
+# key_dico2 = 2e clé de dictionnaire à laquelle sera associée dans le dico la 2e data extraite, lorsqu'il y en a 2 à extraire de la ligne. Vide par défaut, auquel cas il n'y a qu'une donnée à extraire
+# offset_line1 = cas "Mot" = offset optionnel de positionnement du 1er mot à extraire de la ligne, cas "Car" = nombre de caractères à extraire de la ligne, cas "Car2" = non utilisé. Vaut 0 par défaut
+# offset_line2 = offset optionnel de positionnement du 2e mot à extraire de la ligne, vaut 0 par défaut
+def data_from_line_to_dico(Car_ou_Mot, ligne, dico, indice,  key_dico1, key_dico2="",offset_line1=0, offset_line2=0):
+	if Car_ou_Mot == "Mot":# cas d'une recherche par mot de type1'
+		if ligne.find(indice)!=-1 :
+		   	if ligne.find("Regul.Charges")!=-1:
+		   		pass #on ignore les lignes contenant "Regul.Charges"
+		   	else:
+			   	Mes_Mots = ligne.split()
+			   	Nb_Mots = len(Mes_Mots)
+			   	La_donnee_a_extraire = Mes_Mots[Nb_Mots-1+offset_line1]
+			   	dico[key_dico1] = Point_par_Virgule(La_donnee_a_extraire)
+			   	if key_dico2 !="":
+			   	    La_donnee_a_extraire2 = Mes_Mots[Nb_Mots-1+offset_line2]
+			   	    dico[key_dico2] = Point_par_Virgule(La_donnee_a_extraire2)
+	elif Car_ou_Mot == "Car1":# cas d'une recherche par caractère de type 1
+		   	if ligne.find(indice)!=-1:
+		   		Position_Depart_string = ligne.find(indice)+len(indice)
+		   		La_donnee_a_extraire = ligne [Position_Depart_string : Position_Depart_string + offset_line1]
+		   		dico[key_dico1] = Point_par_Virgule(La_donnee_a_extraire)
+	elif Car_ou_Mot == "Car2":# cas d'une recherche par caractère de type 2
+		if ligne.find(indice)!=-1:
+			Position_Depart_string = ligne.find(indice)+len(indice)
+			La_donnee_a_extraire = ligne[Position_Depart_string :]
+			dico[key_dico1] = Point_par_Virgule(La_donnee_a_extraire)
+			print("dico key dans data_from_line_to_dico", dico[key_dico1] )
+			
+
+	   	
+#======FONCTION DE TRAITEMENT PDF QUITTANCE===== - renvoie un dictionnaire des datas extraites
+def Extraction_Data_Quittance(dirPath,Nom_Fichier_Quittance):
+	# creation dictionnaire générique des données  d'une quittance qu'on affectera successivement a synthese, immeuble1 et immeuble2
+	Dico_Quittance ={}
+	# creation dictionnaire des données du récap d'une quittance
+	Synthese_Quittance ={}
+	# creation dictionnaire des données du premier immeuble d'une quittance
+	Immeuble1 ={}
+	# creation dictionnaire des données du seconf immeuble d'une quittance
+	Immeuble2 ={}
+	# initialisation du compteur de pages (1ere page =synthese, 2e page = Dico_Quittance, 2e page = immeuble2)
+	Num_Page =0
+
+	pdf_file = dirPath + Nom_Fichier_Quittance
+
+
+	Synthese_Quittance["00 Nom_Fichier_Quittance"] = Nom_Fichier_Quittance
+	print("")
+	print ("on traite le fichier ",Nom_Fichier_Quittance)
+	try:
+	    pdf_text = pdf_to_text(pdf_file)
+	# ====IMPRESSION DES LIGNES EXTRAITES===
+#	    print(pdf_text)
+	except:
+		print("erreur de lecture du fichier pdf")
+	
+	#===SEPARATION DU TEXTE EN LIGNES - la liste Les_Lignes_txt contient toutes les lignes du pdf===
+	Les_Lignes_txt=pdf_text.split(sep="\n")
+	Nb_Details_Solde = 1 # initialisation à 1
+
+	#===lBOUCLE D'ANALYSE DE CHAQUE' LIGNE==
+	for ligne in Les_Lignes_txt: #analyse des lignes
+
+	#===GESTION DES PAGES PDF - #détermination numéro de page=====
+		if ligne.find("Général de")!=-1:#chaque page démarre par adresse agence qui contient Général de Gaulle donc quand on le rencontre on incrémente num page qui vaut 0 initialement
+				Num_Page +=1
+				if Num_Page ==1:
+					Dico_Quittance = Synthese_Quittance# la première page est toujours la synthèse
+				elif Num_Page ==2:
+					Dico_Quittance = Immeuble1# la 2e page donne le détail pour l'immeuble'
+				elif Num_Page ==3:
+					Dico_Quittance = Immeuble2# optionnel lorsqu'il y a une 3e page= cas de parking géré séparément'
+
+	# synthèse
+	#=====RECHERCHE DATE QUITTANCE - cas où c'est la ligne de date de quittance====
+	# date de quittance = les 10 caractères situés après le groupe de mots "Maisons-Laffitte, le "
+		data_from_line_to_dico("Car1", ligne , Dico_Quittance, "Maisons-Laffitte, le ",  "01 Date_Quittance",offset_line1=10)
+
+	# synthèse
+	#=====RECHERCHE PERIODE QUITTANCE - cas où c'est la ligne de la période MoisAn de quittance====
+	# mois de quittance = l'avant dernier mot et An de quittance = dernier mot' de la ligne contenant  le groupe de mots "relevé gestion "
+#		data_from_line_to_dico("Mot", ligne , Dico_Quittance, "relevé gestion ",  "011 Mois_Quittance", key_dico2 = "012 An_Quittance", offset_line1=-1)
+		if ligne.find( "Maisons-Laffitte, le ")!=-1:
+			Dico_Quittance["012 An_Quittance"]=Dico_Quittance["01 Date_Quittance"][-4:]
+			LaDate=Dico_Quittance["01 Date_Quittance"]
+			Dico_Quittance["011 Mois_Quittance"]=LaDate[-7:-5]
+	# synthèse	       
+	# les cas où c'est une ligne contenant solde
+	# 1) cas où c'est la ligne du solde crediteur ou debiteur global annoncé
+	#=====RECHERCHE SOLDE CREDITEUR OU DEBITEUR GLOBAL ANNONCE====
+	# Positionné en dernière position du groupe de mots contenant solde lui même précédé de "présentant"" 2 mots avant
+		if ligne.find("solde")!=-1:#ligne.upper().find("SOLDE")!=-1:
+		   	Mes_Mots = ligne.split()
+		   	Nb_Mots = len(Mes_Mots)
+		   	Position_Solde = Mes_Mots.index("solde")
+		   	if Position_Solde>0: # positif uniquement si "solde" tout en minuscule est trouvé (sinon -1), "solde"" tout en minuscule n'existe que dans la déclaration initiale globale, sinon, c'est "Solde""
+		   		if Mes_Mots[Position_Solde - 2]=="présentant":
+		   		    Type_Solde_Global = Mes_Mots[Position_Solde + 1]
+		   		    # le type solde est soit débiteur soit créditeur, selon ce qui est écrit juste après "solde"
+		   		    Dico_Quittance["02 Type_Solde_Global"] = Type_Solde_Global
+		   		    Montant_Solde_Global = Mes_Mots[Nb_Mots - 3] # le solde est situé dans l'avant avant dernier mot de la ligne suivi par "€" puis par ."."
+		   		    Dico_Quittance["03 Montant_Solde_Global"] = Point_par_Virgule(Montant_Solde_Global)
+	   		    
+	# immeuble
+	#=====RECHERCHE NOM PRENOM LOCATAIRE - cas où c'est la ligne du nom prenom locataire====
+	# nom prenom locataire = tous les caractères situés après le groupe de mots "Appartement "
+		data_from_line_to_dico("Car2", ligne , Dico_Quittance, "Lot 00",  "28 NomPr_Locataire")
+
+
+	# immeuble
+	#=====RECHERCHE LOYER APPELE - cas où c'est la ligne du loyer appelé====
+	# Loyer Appelé = dernier mot de la ligne contenant le groupe de mots "LOYER Du xx.xx.xxxx Au yy.yy.yyyy "
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "LOYER Du ", "06 Du_Par_Loc_Loyer_Du")
+
+	# immeuble
+	#=====RECHERCHE TOTAL REGLE PAR LOC - cas où c'est la ligne du total réglé====
+	# Total réglé = dernier mot de la ligne contenant le groupe de mots "TOTAUX REGLES "
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "TOTAUX REGLES ", "070 Regle_Par_Loc_Total_Regle")
+
+	# immeuble
+	#=====RECHERCHE HONORAIRES HT - cas où c'est la ligne des honoraires HT====
+	# honoraires HT = dernier mot de la ligne contenant le groupe de mots "Honoraires H.T."
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "Honoraires H.T. ", "052 Charge_Proprio_Honoraires_HT")
+
+	# immeuble
+	#=====RECHERCHE TVA HONORAIRES - cas où c'est la ligne de la TVA honoraires====
+	# TVA honoraires = dernier mot de la ligne contenant le groupe de mots "TVA/Honoraires "
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "TVA/Honoraires ", "053 Charge_Proprio_Honoraires_TVA")
+
+	# immeuble
+	#=====RECHERCHE CHARGES COPRO - cas où c'est la ligne des charges copro====
+	# charges copro = dernier mot de la ligne contenant le groupe de mots "Charges "
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "Charges ", "055 Charge_Proprio_Charges_Copro")
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "Solde ", "055 Charge_Proprio_Charges_Copro")# on ajoute les lignes où il est écrit "Solde" qui correspondent au paiement des soldes de charges
+	
+	# immeuble
+	#=====RECHERCHE ASSURANCE LOYERS IMPAYES - cas où c'est la ligne des assurances loyer impaye====
+	# assurances loyer impaye = dernier mot de la ligne contenant le groupe de mots "garantie des loyers "
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "garantie des loyers ", "056 Charge_Proprio_Assu_Loyer_Impaye")
+
+	# immeuble
+	#=====RECHERCHE PROVISION TVX ALUR - cas où c'est la ligne des provisions tvx alur====
+	# provisions tvx alur = dernier mot de la ligne contenant le groupe de mots "alur "
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "alur ", "054 Charge_Proprio_Prov_Tvx_Alur")
+
+	# immeuble
+	#=====RECHERCHE TOTAL CHARGE PROPRIO - cas où c'est la ligne du total a charge proprietaire====
+	# total a charge proprietaire = avant dernier mot de la ligne contenant le groupe de mots "Totaux Généraux "
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "Totaux Généraux ", "051 Charge_Proprio_Total_Charges_Proprio" ,offset_line1=-1)
+
+	# immeuble   	   
+	#=====RECHERCHE TAXE ORDURES MENAGERES - cas où c'est la ligne taxe ordures menageres====
+	# taxe ordures menageres = avant avant dernier mot de la ligne contenant le groupe de mots "Taxes ordures "	
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "Taxes ordures ", "Taxe_Ordures_Menageres" ,offset_line1=-1)#=-2a l'origine mais changé pour laffitte 2016-09'
+
+	# immeuble
+	#=====RECHERCHE PROVISIONS APPELEES - cas où c'est la ligne des provisions appelées====
+	# provisions appelées = dernier mot de la ligne contenant le groupe de mots "PROVISIONS Du xx.xx.xxxx Au yy.yy.yyyy "
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "PROVISIONS Du ", "06 Du_Par_Loc_Provision_Du")
+
+	# immeuble
+	#=====RECHERCHE NUMERO IMMEUBLE - cas où c'est la ligne du numéro d'immeuble====
+	# numéro d'immeuble = dernier mot de la ligne contenant le groupe de mots "COMPTE IMMEUBLE "
+		data_from_line_to_dico("Mot", ligne, Dico_Quittance, "COMPTE IMMEUBLE ", "12 Num_Immeuble")
+
+	# immeuble	   		     
+	# autres cas où c'est la ligne du solde antérieur ou des soldes de détails
+	#=====RECHERCHE SOLDE ANTERIEUR OU DETAILS====	   		    
+		if ligne.find("Solde")!=-1 and not(ligne.find("Soldes")!=-1) :	   	     	   	     
+		   	Mes_Mots = ligne.split()
+		   	Nb_Mots = len(Mes_Mots)
+		   	Position_Solde = Mes_Mots.index("Solde")
+	   	
+	# 2) cas où c'est la ligne du solde antérieur
+	#=====RECHERCHE SOLDE ANTERIEUR====
+	# pb à régler: parfois il n'y a qu'un appelé (dernier) et parfois un appelé (avant dernier) et 1 réglé (dernier).dans le 1er cas,,l'avant dernier est une date de 8 car de long ce qu'on va tester
+		   	if Mes_Mots[Position_Solde + 1] == "Antérieur" : # cas du solde antérieur où l'avant dernier mot est le montant antérieur appelé et le dernier mot le montant antérieur réglé
+		   		   if len (Mes_Mots[Nb_Mots - 2])==8 :#cas juste appelé mais pas de réglé
+		   		   	Montant_Appele_Anterieur= Mes_Mots[Nb_Mots - 1]
+		   		   	Montant_Regle_Anterieur ="0.00"
+		   		   elif Nb_Mots==3 :# ajouté a cause du laffitte 2014-11qui est un cas juste réglé mais pas de appelé
+		   		   	Montant_Appele_Anterieur="0.00" 
+		   		   	Montant_Regle_Anterieur =Mes_Mots[Nb_Mots - 1]
+		   		   else:
+		   		   	Montant_Appele_Anterieur = Mes_Mots[Nb_Mots - 2] # le montant appelé antérieur est situé dans l'avant dernier mot de la ligne                
+		   		   	Montant_Regle_Anterieur = Mes_Mots[Nb_Mots - 1] # le montant réglé antérieur est situé dans le dernier mot de la ligne
+		   		   Dico_Quittance["04 Montant_Appele_Anterieur"] = Point_par_Virgule(Montant_Appele_Anterieur)
+		   		   Dico_Quittance["04 Montant_Regle_Anterieur"] = Point_par_Virgule(Montant_Regle_Anterieur)
+		   		   Dico_Quittance["04 Ecart_Anterieur"] = round(float(Montant_Appele_Anterieur)-float(Montant_Regle_Anterieur),2)
+
+	   		   
+		   	elif Mes_Mots[Position_Solde + 1] != "au" : # 3) les autres cas de "Solde" sont des détails de solde créditeur ou débiteur selon mot derrière "Solde". Il ne faut pas prendre les cas où le mot suivant est "au"
+	#=====RECHERCHE DETAILS SOLDES CREDITEURS OU DEBITEURS====	      		   	   
+		   	    if Nb_Details_Solde == 1:
+		   	              Type_Detail_Solde_1 = Mes_Mots[Position_Solde + 1]
+		   	              Montant_Detail_Solde_1 = Mes_Mots[Nb_Mots-1]
+		   	              if Montant_Detail_Solde_1.find('"')!=-1:
+		   	              	Pos= Montant_Detail_Solde_1.find('"')
+		   	              	Montant_Detail_Solde_1=Montant_Detail_Solde_1[:Pos]
+		   	              Dico_Quittance["081 Type_Detail_Solde_1"] = Type_Detail_Solde_1
+		   	              Dico_Quittance["082 Montant_Detail_Solde_1"] = Point_par_Virgule(Montant_Detail_Solde_1)
+		   	              Nb_Details_Solde += 1
+		   	    elif Nb_Details_Solde == 2:
+		   	              Type_Detail_Solde_2 = Mes_Mots[Position_Solde + 1]
+		   	              Montant_Detail_Solde_2 = Mes_Mots[Nb_Mots-1]
+		   	              if Montant_Detail_Solde_2.find('"')!=-1:
+		   	              	Pos= Montant_Detail_Solde_2.find('"')
+		   	              	Montant_Detail_Solde_2=Montant_Detail_Solde_2[:Pos]
+		   	              Dico_Quittance["083 Type_Detail_Solde_2"] = Type_Detail_Solde_2
+		   	              Dico_Quittance["084 Montant_Detail_Solde_2"] = Point_par_Virgule(Montant_Detail_Solde_2)
+		   	              Nb_Details_Solde +=1
+		   	    elif Nb_Details_Solde == 3:
+		   	              Type_Detail_Solde_3 = Mes_Mots[Position_Solde + 1]
+		   	              Montant_Detail_Solde_3 = Mes_Mots[Nb_Mots-1]
+		   	              if Montant_Detail_Solde_3.find('"')!=-1:
+		   	              	Pos= Montant_Detail_Solde_3.find('"')
+		   	              	Montant_Detail_Solde_3=Montant_Detail_Solde_3[:Pos]
+		   	              Dico_Quittance["085 Type_Detail_Solde_3"] = Type_Detail_Solde_3
+		   	              Dico_Quittance["086 Montant_Detail_Solde_3"] = Point_par_Virgule(Montant_Detail_Solde_3)
+		   	              Nb_Details_Solde += 1
+		   	    elif Nb_Details_Solde == 4:
+		   	              Type_Detail_Solde_4 = Mes_Mots[Position_Solde + 1]
+		   	              Montant_Detail_Solde_4 = Mes_Mots[Nb_Mots-1]
+		   	              if Montant_Detail_Solde_4.find('"')!=-1:
+		   	              	Pos= Montant_Detail_Solde_4.find('"')
+		   	              	Montant_Detail_Solde_4=Montant_Detail_Solde_4[:Pos]
+		   	              Dico_Quittance["087 Type_Detail_Solde_4"] = Type_Detail_Solde_4
+		   	              Dico_Quittance["088 Montant_Detail_Solde_4"] = Point_par_Virgule(Montant_Detail_Solde_4)
+		   	              Nb_Details_Solde += 1
+		   	    elif Nb_Details_Solde == 5:
+		   	              Type_Detail_Solde_5 = Mes_Mots[Position_Solde + 1]
+		   	              Montant_Detail_Solde_5 = Mes_Mots[Nb_Mots-1]
+		   	              if Montant_Detail_Solde_5.find('"')!=-1:
+		   	              	Pos= Montant_Detail_Solde_5.find('"')
+		   	              	Montant_Detail_Solde_5=Montant_Detail_Solde_5[:Pos]
+		   	              Dico_Quittance["091 Type_Detail_Solde_5"] = Type_Detail_Solde_5
+		   	              Dico_Quittance["092 Montant_Detail_Solde_5"] = Point_par_Virgule(Montant_Detail_Solde_5)
+		   	              Nb_Details_Solde += 1                               
+	       
+
+	# immeuble
+	# cas où c'est la ligne des totaux appelés au locataire
+	#=====RECHERCHE DES DIFFERENTS TOTAUX APPELES DU LOCATAIRE====
+	# Positionné dans la ligne contenant le groupe de mots "TOTAUX APPELES  " avec dans l'ordre apres les 2 mots "TOTAUX" et "APPELES", le loyer, les charges, les taxes, les divers, et le total appelé
+		if ligne.find("TOTAUX APPELES ")!=-1:
+		   	Mes_Mots = ligne.split()
+		   	Nb_Mots = len(Mes_Mots)
+		   	if Nb_Mots == 7:
+		   	    Total_Loyer_Du = Mes_Mots[Nb_Mots-5]
+		   	    Dico_Quittance["062 Du_Par_Loc_Total_Loyer_Du"] = Point_par_Virgule(Total_Loyer_Du)
+		   	    Total_Charges_Du = Mes_Mots[Nb_Mots-4]
+		   	    Dico_Quittance["063 Du_Par_Loc_Total_Charges_Du"] = Point_par_Virgule(Total_Charges_Du)
+		   	    Total_Taxes_Du = Mes_Mots[Nb_Mots-3]
+		   	    Dico_Quittance["064 Du_Par_Loc_Total_Taxes_Du"] = Point_par_Virgule(Total_Taxes_Du)
+		   	    Total_Divers_Du = Mes_Mots[Nb_Mots-2]
+		   	    Dico_Quittance["065 Du_Par_Loc_Total_Divers_Du"] = Point_par_Virgule(Total_Divers_Du)
+		   	    Total_Du = Mes_Mots[Nb_Mots-1]
+		   	    Dico_Quittance["061 Du_Par_Loc_Total_Du"] = Point_par_Virgule(Total_Du)
+		   	else:
+		   		Dico_Quittance["A_Verifier_TotAppeles"] = Nb_Mots
+	   		
+	# immeuble
+	#cas où c'est la ligne des totaux réglés par le locataire
+	#=====RECHERCHE DES DIFFERENTS TOTAUX REGLES PAR LOCATAIRE====
+	# Positionné dans la ligne contenant le groupe de mots "TOTAUX REGLES  " avec dans l'ordre apres les 2 mots "TOTAUX" et "REGLES", le loyer, les charges, les taxes, les divers, et le total réglé
+		if ligne.find("TOTAUX REGLES ")!=-1:
+		   	Mes_Mots = ligne.split()
+		   	Nb_Mots = len(Mes_Mots)
+		   	if Nb_Mots == 7:
+		   	    Total_Loyer_Regle = Mes_Mots[Nb_Mots-5]
+		   	    Dico_Quittance["072 Regle_Par_Loc_Total_Loyer_Regle"] = Point_par_Virgule(Total_Loyer_Regle)
+		   	    Total_Charges_Regle = Mes_Mots[Nb_Mots-4]
+		   	    Dico_Quittance["073 Regle_Par_Loc_Total_Charges_Regle"] = Point_par_Virgule(Total_Charges_Regle)
+		   	    Total_Taxes_Regle = Mes_Mots[Nb_Mots-3]
+		   	    Dico_Quittance["074 Regle_Par_Loc_Total_Taxes_Regle"] = Point_par_Virgule(Total_Taxes_Regle)
+		   	    Total_Divers_Regle = Mes_Mots[Nb_Mots-2]
+		   	    Dico_Quittance["075 Regle_Par_Loc_Total_Divers_Regle"] = Point_par_Virgule(Total_Divers_Regle)
+		   	    Total_Regle = Mes_Mots[Nb_Mots-1]
+		   	    Dico_Quittance["071 Regle_Par_Loc_Total_Regle"] = Point_par_Virgule(Total_Regle)
+		   	else:
+		   		Dico_Quittance["A_Verifier_TotRegles"] = Nb_Mots
+
+	# ===AJOUT DE MON NOM D'IMMEUBLE à partir de mon fichier "Liste_immobilier"" de correspondance num imm-nom imm==
+	if Num_Page==2: #s'il n'y a qu'un immeuble
+		Immeuble1["00 Nom_Immeuble"]=Liste_immobilier[Immeuble1["12 Num_Immeuble"]]
+	elif Num_Page==3: #s'il y a immeuble et parking
+		Immeuble1["00 Nom_Immeuble"]=Liste_immobilier[Immeuble1["12 Num_Immeuble"]]
+		Immeuble2["00 Nom_Immeuble"]=Liste_immobilier[Immeuble2["12 Num_Immeuble"]]
+
+
+	# ===TRI&IMPRESSION DONNEES EXTRAITES==
+	# Tri des données de synthèse (1e page)
+	Donnee_Synthese_Triee = sorted(Synthese_Quittance.items(), key=lambda t: t[0])
+
+	# le dictionnaire "Data_Appart" contiendra toutes les données d'une quittance, prêtes à transmettre vers Excel. On l'initialise avec les données de synthèse.'
+	Data_Appart=dict(Donnee_Synthese_Triee)
+	# Tri des données de l'appart' (2e page)
+	Donnee_Immeuble1_Triee = sorted(Immeuble1.items(), key=lambda t: "Appart_"+t[0])
+	# puis ajout de l'info qu'il s'agit des données d'appart dans le titre et intégration dans "Data_Appart""
+	for Data in dict(Donnee_Immeuble1_Triee).items():
+		Data_Appart["Appart"+Data[0]]=Data[1]
+
+
+	if Num_Page==3:# cas à 2 immeubles :appart +,pkg
+	# Tri des données du parking (3e page)
+		Donnee_Immeuble2_Triee = sorted(Immeuble2.items(), key=lambda t: t[0])
+		# puis ajout de l'info qu'il s'agit des données de parking dans le titre et intégration dans "Data_Appart""
+		for Data in dict(Donnee_Immeuble2_Triee).items():
+			Data_Appart["Pkg"+Data[0]]=Data[1]
+#	print(Data_Appart)
+	return Data_Appart
+	
+#====FONCTION DE TRANSFERT DATA VERS EXCEL===
+from openpyxl import load_workbook
+#fonction qui écrit une donnée dans une cellule
+def save_data_to_excel(data, num_line, num_column , excel_file, The_sheet):
+     # data=donnée à inscrire dans une cellule excel, num_line et num_column =numéro de ligne et de colonne cible dans excel, excel_file= path vers fichier excel qui est supposé préexister
+    MyWbook = load_workbook(excel_file)
+    MySheet = MyWbook.get_sheet_by_name(name =The_sheet)
+    MySheet.cell(row=num_line, column=num_column).value = data
+    MyWbook.save(excel_file)  
+# ws = wb.get_sheet_by_name(name =The_sheet) 
+
+#====FONCTION DE RECUPERATION DU NOMBRE DE LIGNES EXCEL===
+#fonction qui ouvre le fichier et recupere et renvoie le nombre de ligne
+def nb_lignes_excel(excel_file, The_sheet):
+     # excel_file= path vers fichier excel qui est supposé préexister
+    MyWbook = load_workbook(excel_file)
+    MySheet = MyWbook.get_sheet_by_name(name =The_sheet)
+    NumOfLines = len(tuple(MySheet.rows))
+    print(" nb lignes  ",NumOfLines)
+    MyWbook.save(excel_file)  
+    return NumOfLines
+    
+
+#===FONCTION DE RECHERCHE TOUS PDF D'UN REPERTOIRE == - recherche de tous les fichiers pdf du répertoire
+import os
+def Tous_PDF_deRepert(dirPath): #renvoie liste de noms fichiers pdf et nombre de fichiers
+	result = next(os.walk(dirPath))[2] # tous les fichiers du répertoire
+	Les_PDF = [x for x in result if  ".pdf" in x] # tous les pdf du répertoire
+	print("")
+	print("Les fichiers du répertoire",result)
+	print("")
+	print("Les fichiers pdf du répertoire",Les_PDF)
+	Nb_PDF = len(Les_PDF)
+	print("")
+	print("Nb fichiers pdf du répertoire",Nb_PDF)
+	return Les_PDF, Nb_PDF
+
+
+#===FONCTION D'EXTRACTION VERS EXCEL D'UNE QUITTANCE==
+def Quittance_Vers_Excel(dirpath,dirPathQuittance, Nom_Fichier_Quittance,Nom_Fichier_Excel,Num_Ligne, The_sheet):
+	Data_Appartt = Extraction_Data_Quittance(dirPathQuittance,Nom_Fichier_Quittance)
+	
+	excel_file = dirPath + Nom_Fichier_Excel
+	
+	# INSTRUCTIONS CI-DESSOUS QUE POUR LE TRAITEMENT DE L'HISTORIQUE
+	# inscription dans Excel de la ligne 1 des titres à partir des infos de la table des titres
+#	for My_Key in Titres_Prog_vs_Excel:
+#		save_data_to_excel(My_Key[2],1,My_Key[0],excel_file) # boucle sur toute la table pour inscrire en ligne 1 et en colonne My_Key[0] le titre excel My_Key[2]
+
+	# inscription dans Excel de la ligne suivante des data extraites à partir des infos de la table des titres et de celles de Data_Appart
+	for My_Key in Titres_Prog_vs_Excel:
+			if My_Key[1] in Data_Appartt.keys():
+				save_data_to_excel(Data_Appartt[My_Key[1]],Num_Ligne,My_Key[0],excel_file, The_sheet)
+				#boucle sur l'exhaustivité des titres de "Titres_Prog_vs_Excel". Si on le trouve dans les data extraites de la quittance (figurant dans "Data_Appart"), on l'inscrit dans excel dans la colonne correspondante en ligne 2
+				
+				
+#===DEFINITION DU CHEMIN ET DU FICHIER
+dirPath = "/storage/emulated/0/Dev/GesResid/"
+Nom_Fichier_Excel = "Suivi_Invest_TousApparts.xlsx"
+dirPathQuittance = "/storage/emulated/0/Dev/FichQuittNew/"
+The_sheet = "Quittances"
+PathFile = dirPath + Nom_Fichier_Excel
+
+# listage des fichiers quittance pdf du répertoire
+Mes_pdf,Nb_Mes_pdf = Tous_PDF_deRepert("/storage/emulated/0/Dev/FichQuittNew")
+#boucle sur tous les pdf du répertoire (= toutes les quittances) pour extraire les données vers excel
+
+NbLignesExcel =nb_lignes_excel(PathFile, The_sheet)
+LignesATraiter =NbLignesExcel+Nb_Mes_pdf
+
+for My_Quittance in Mes_pdf:
+	Quittance_Vers_Excel(dirPath, dirPathQuittance,My_Quittance,Nom_Fichier_Excel, LignesATraiter, The_sheet)
+	LignesATraiter -=1
+
+
+#TODO voir remplact point_par_virgule par simple float boire round(float)
+#Appart_DetailSolde2_Mont avec "derriere pour Bezons luther
+#Sy_Detail_Solde1_Mont avec "derriere pour tous apparts
+# F003435_04_469.pdf pasteur janvier 24
+# F014510_04_477.pdf pasteur novembre 23
+# F014510_04_478.pdf stalingrad novembre 23 
+# F029641_04_108.pdf lutherKing octobre 23
+# F028014_04_394.pdf stalingrad novembre 23
+# F028014_04_393.pdf stalingrad octobre 23
+# F003968_04_205.pdf
+# F003968_04_208.pdf
+# F003968_04_207.pdf
+# F003968_04_206.pdf
+# F022579_04_450.pdf
+# F022579_04_452.pdf
+# F014922_04_235.pdf
+# F014922_04_234.pdf
+# F022579_04_451.pdf stalingrad

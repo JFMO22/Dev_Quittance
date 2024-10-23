@@ -1,0 +1,615 @@
+
+import pandas as pd
+import datetime
+
+	# TODO Exporter les CA annuels des résidences vers excel'
+	#TODO Dans quittances2xlsx, les charges copro ne sont pas encore bien prises exhaustivement. => verifier que lorsqu'il y a plusieurs lignes de charges sur la quittance, elles sont bien additionnees notamment 2 x Charges ITR18 Pasteur 2018-01 , "solde " en plus de Charges, et ajouter aussi le cas " Régularisation charges " pasteur 2023-04
+	#TODO Dans TDB, taxe ordure est foireuse avec des chiffres importants sur Castille du fait de l'arriéré d'impayé car taxe ordure récupère en fait Divers locataires
+	#TODO analyser les raisons des différences de rentabilité entre niveau du loyer, charges du proprio et taux de vacances
+# TODO extraire aussi les infos des anciennes quittances jaunes anciennes pour un vrai calcul du cumul depuis l'origine et de la rentabilité
+# TODO Ajouter la derniere quittance envoyee
+# TODO Gerer l'ajout systematique du ca du parking a celui de la residence.
+
+#1) TDB CA
+#1°) On extrait de Excel les lignes de CA mensuel
+#On sélectionne pour chaque résidence :
+#2°) Le dernier an-mois 
+#3°) on récupère le CA mensuel moyen et on fait le ratio/CA du mois => %/CA_mensuel_moyen
+#4°)  on cherche les 3 dernietd an-mois  => CA_3_derniers_mois 
+#5°) on fait 3x CA mensuel moyen pour le CA trimestriel moyen, puis on divise le CA 3 derniers mois par ce CA trimestriel moyen => %/CA trimestriel_moyen
+#6°) on cherche les 12 derniers an-mois  => CA_12_derniers_mois
+#8°) on fait 12x CA mensuel moyen pour le CA annuel moyen, puis on divise le CA 12 derniers mois par ce CA annuel moyen => %/CA annuel_moyen
+#9°) on fait CA des 6 derniers mois x 2 pour calculer le CA annuel prévisionnel, même méthode que précédemment => CA_prévisionnel_12_mois_à_venir
+#10°) Au fil du traitement de chaque résidence, on calcule un cumul toutes résidences qu'on inscrit à la fin sur la 5e ligne
+#11°) extraire le data frame contenant ces données vers un fichier excel TDB et un fichier excel CA_Résidences 
+
+# quand nouvelle quittance, ajout au fichier excel des quittances sans tout refaire  = ok
+
+
+#I) FONCTIONS DE CALCUL
+
+# I-1) FONCTION DE CALCUL DES CA MENSUELS MOYEN D'UNE RESIDENCE A PARTIR DE LA LISTE DES QUITTANCES
+def Calcul_CA_Mensuel(NomResidence, My_DF_Quittances, MoisDebut, AnDebut, MoisFin, AnFin, AnStartResid, MoisStartResid) :
+# PARAMETRES :
+#NomResidence : nom de la résidence
+# My_DF_Quittances = data frame input contenant toutes les quittances suite import d'un fichier excel vers data frame
+# MoisDebut, AnDebut : mois et année de début d'analyse
+#MoisFin, AnFin : mois et année de fin d'analyse
+#MoisStartResid, AnStartResid : mois et année de début de location de la résidence
+# ACTION DE LA FONCTION
+# renvoi d'un dataFrame contenant pour la résidence,  son CA, pour chaque mois-an de la période (même les mois à CA = 0€)
+
+	List_CA=[]# initialisation de la liste des C.A.
+	List_An =[]# initialisation de la liste des An
+	List_Mois =[]# initialisation de la liste des mois
+	List_Residence =[]# initialisation de la liste de la résidence	
+	List_ChargPropTot =[]# initialisation de la liste des charges proprio totales de la résidence
+	List_ChargPropGest =[]# initialisation de la liste des charges proprio de gestion de la résidence
+	List_ChargPropAssImp =[]# initialisation de la liste des charges proprio d'assurance impayé' de la résidence		
+	List_ChargPropCoprAlur =[]# initialisation de la liste des charges proprio de copropriété et loi Alur de la résidence
+	List_Loyer =[]# initialisation de la liste des charges proprio de copropriété et loi Alur de la résidence
+	List_ChargLoc =[]# initialisation de la liste des charges proprio de copropriété et loi Alur de la résidence
+	List_DiversLoc =[]# initialisation de la liste des charges proprio de copropriété et loi Alur de la résidence
+				
+	Dictio_Resultats = {} # initialisation du dictionnaire qui contiendra les resultats des 3 listes et qui sera converti en data frame
+	
+
+#===&&&&&&&&  PARTIE 1 : CALCUL DES CA MENSUELS DE LA RESIDENCE  &&&&&&&===
+	
+	# ====****ETAPE1 : LISTE DES QUITTANCES DE LA RESIDENCE====****
+	DfResidence = My_DF_Quittances.loc[My_DF_Quittances["Appart_Nom"] == NomResidence , ["Sy_Solde_Glo_Mont","Sy_An", "Sy_Mois","Appart_Charg_Prop_Tot", "Appart_Charge_Prop_HonoHT", "Appart_Charge_Prop_HonoTVA", "Appart_Charge_Prop_Assu_Impaye", "Appart_Charge_Prop_Alur", "Appart_Charge_Prop_ChargCopro", "Appart_Loyer_Du", "Appart_TotChargDu", "Appart_TotDiversDu"]]
+	# DfResidence contient NomResid,CA,mois,an, charge propTot de toutes les quittances de la résidence
+	
+	# ====****ETAPE2 : CALCUL DU CA MENSUEL====****
+	# Calcul de la derniere annee de quittance qui sert à trouver le CA du dernier mois quittancé
+	for annee in range(AnDebut,AnFin+1):
+				
+				# ====ETAPE 2.1 : DF DES QUITTANCES DE L'ANNEE====
+				#creation d'un data frame des quittances de l'appartement pour l'année considérée
+		DfResidAn = DfResidence.loc[(DfResidence["Sy_An"] ==annee), ["Sy_Solde_Glo_Mont","Sy_An", "Sy_Mois", "Appart_Charg_Prop_Tot","Appart_Charge_Prop_HonoHT", "Appart_Charge_Prop_HonoTVA", "Appart_Charge_Prop_Assu_Impaye","Appart_Charge_Prop_ChargCopro","Appart_Charge_Prop_Alur","Appart_Loyer_Du", "Appart_TotChargDu", "Appart_TotDiversDu"]]
+
+				# ====ETAPE 2.2 : CALCUL DU CA MENSUEL====
+		# boucle sur les mois ciblés
+		for lemois in range(1,13):
+			if (annee==AnDebut and lemois <MoisDebut):
+				pass #rien si on est dans l'année de début cible mais avant mois début cible
+			elif (annee<AnStartResid):
+				pass #rien si on est avant l'année de démarrage de la résidence
+			elif (annee==AnStartResid and lemois <MoisStartResid):
+				pass #rien si on est dans l'année de démarrage résidence avant le mois de démarrage résidence
+			elif (annee==AnFin and lemois >MoisFin) :
+				pass # rien si on est après mois fin an fin de période d'analyse'
+			elif (annee>AnFin) :
+				pass # rien si on est après l''an fin de période d'analyse'
+			else: # cas où on est dans la période visée
+				# calcul des charges propriétaire totales mensuelles
+				dfChPropTotMensuelUnit=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Appart_Charg_Prop_Tot","Sy_An", "Sy_Mois"]].sum()
+				# calcul des charges propriétaire de gestion mensuelles : honoraires HT+ honoraires TVA + assurance loyer impayé + AppelsSyndic + loi Alur
+				dfChPropGestMensuelUnit=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Appart_Charge_Prop_HonoHT","Sy_An", "Sy_Mois"]].sum()
+
+				dfChPropGestMensuelUnit2=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Appart_Charge_Prop_HonoTVA","Sy_An", "Sy_Mois"]].sum()
+
+				dfChPropAssImpMensuelUnit=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Appart_Charge_Prop_Assu_Impaye","Sy_An", "Sy_Mois"]].sum()
+				
+				dfChPropCoprAlurMensuelUnit=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Appart_Charge_Prop_ChargCopro","Sy_An", "Sy_Mois"]].sum()
+
+				dfChPropCoprAlurMensuelUnit2=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Appart_Charge_Prop_Alur","Sy_An", "Sy_Mois"]].sum()
+				dfLoyerMensuelUnit=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Appart_Loyer_Du","Sy_An", "Sy_Mois"]].sum()
+				dfChargLocMensuelUnit=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Appart_TotChargDu","Sy_An", "Sy_Mois"]].sum()
+				dfDiversLocMensuelUnit=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Appart_TotDiversDu","Sy_An", "Sy_Mois"]].sum()
+
+				# calcul du CA mensuel			
+				dfCAMensuelUnitaire=DfResidAn.loc[(DfResidAn["Sy_Mois"] ==lemois), ["Sy_Solde_Glo_Mont","Sy_An", "Sy_Mois"]].sum()
+				# dfCAMensuelUnitaire contient la somme des quittances du mois-an mais effet indésirable, il reçoit aussi la somme du mois et de l'année donc si 2 quittances dans le mois-an, on aura 2xan et 2xmois dans les champs correspondants.=> à corriger ci-dessous
+				if dfCAMensuelUnitaire["Sy_An"] == 2*annee :#cas de 2 quittances le meme mois pour la résidence car an et mois sont en ce cas doublés par le df
+					dfCAMensuelUnitaire["Sy_An"] = dfCAMensuelUnitaire["Sy_An"]/2
+					dfCAMensuelUnitaire["Sy_Mois"] = dfCAMensuelUnitaire["Sy_Mois"]/2
+				if dfCAMensuelUnitaire["Sy_An"] == 3*annee :#cas de 3 quittances le meme mois pour la résidence car an et mois sont en ce cas triplés par le df - on considere qu'on n'aura pas + de 3 quittances/ mois sur une résidence
+					dfCAMensuelUnitaire["Sy_An"] = dfCAMensuelUnitaire["Sy_An"]/3
+					dfCAMensuelUnitaire["Sy_Mois"] = dfCAMensuelUnitaire["Sy_Mois"]/3
+				if dfCAMensuelUnitaire["Sy_An"] == 0 :#cas de 0 quittances le meme mois pour la résidence, en ce cas le df met an et mois à 0 et il faut corriger
+					dfCAMensuelUnitaire["Sy_An"]=annee
+					dfCAMensuelUnitaire["Sy_Mois"]=lemois
+			# ====ETAPE 2.3 : CREATION DU DICTIONNAIRE DES C.A. MENSUELS DE LA RESIDENCE====
+			
+				List_ChargPropTot.append(dfChPropTotMensuelUnit["Appart_Charg_Prop_Tot"]) # affectation de charge proprio totale à la liste des charge proprio totale 
+				List_ChargPropGest.append(dfChPropGestMensuelUnit["Appart_Charge_Prop_HonoHT"] + dfChPropGestMensuelUnit2["Appart_Charge_Prop_HonoTVA"] )# affectation des charges proprio de gestion à la liste des charge proprio de gestion 				
+				List_ChargPropAssImp.append(dfChPropAssImpMensuelUnit["Appart_Charge_Prop_Assu_Impaye"]) # affectation des charges proprio d'assurance' à la liste des charge proprio d'assurance' 	
+				List_ChargPropCoprAlur.append(dfChPropCoprAlurMensuelUnit["Appart_Charge_Prop_ChargCopro"] + dfChPropCoprAlurMensuelUnit2["Appart_Charge_Prop_Alur"] )# affectation des charges proprio de gestion à la liste des charge proprio de gestion
+				List_Loyer.append(dfLoyerMensuelUnit["Appart_Loyer_Du"]) # affectation des loyers à la liste des loyers
+				List_ChargLoc.append(dfChargLocMensuelUnit["Appart_TotChargDu"]) # affectation des loyers à la liste des loyers				
+				List_DiversLoc.append(dfDiversLocMensuelUnit["Appart_TotDiversDu"]) # affectation des loyers à la liste des loyers								
+			
+				List_CA.append(dfCAMensuelUnitaire["Sy_Solde_Glo_Mont"]) # affectation du CA à la liste des C.A.
+				List_An.append(dfCAMensuelUnitaire["Sy_An"]) # affectation de l'annee' à la liste des An
+				List_Mois.append(dfCAMensuelUnitaire["Sy_Mois"]) # affectation du mois la liste des mois	
+				List_Residence = NomResidence
+				
+	# à la fin, on affecte les 4 listes dans le dictionnaire puis on convertit le dictionnaire dans un dataframe qu'on renvoie
+	Dictio_Resultats = {"Appart_Nom" : List_Residence, "Sy_Solde_Glo_Mont" : List_CA ,"Sy_An" : List_An, "Sy_Mois" :  List_Mois, "Sy_ChargePTot": List_ChargPropTot, "Sy_ChargePGest": List_ChargPropGest,"Sy_ChargePCoprAlur": List_ChargPropCoprAlur, "Sy_ChargePAssImp": List_ChargPropAssImp, "Sy_Loyer": List_Loyer, "Sy_ChargLoc": List_ChargLoc, "Sy_DiversLoc": List_DiversLoc } 
+	print("Dictio_Resultats", Dictio_Resultats)
+
+			# ====ETAPE 2.4 : CREATION DU DATA FRAME DES C.A. MENSUELS DE LA RESIDENCE====
+	Df_Resultat_Mensuel = pd.DataFrame.from_dict(Dictio_Resultats)	
+	
+#===&&&&&&&&  PARTIE 2 : CALCUL DES STATISTIQUES POUR TABLEAU DE BORD DE LA RESIDENCE  &&&&&&&===
+
+	# tri de Df_Resultat_Mensuel par an mois pour que tout soit trié par chronologie et qu'on puisse chercher facilement les derniers mois
+	Df_Resultat_Mensuel= Df_Resultat_Mensuel.sort_values(by=["Sy_An", "Sy_Mois"])
+	
+	# Df_Resultat_Mensuel contient tous les CA mensuels de la résidence triés chronologiquement
+	# df etant trié chrono, le CA du dernier mois est le dernier enregistrement tail(1), les 3 derniers sont tail(3)et les 12 derniers sont tail(12)
+	DF_CA_Dernier_MoisAn = Df_Resultat_Mensuel.tail(1)
+	DF_CA_3Dernier_MoisAn = Df_Resultat_Mensuel.tail(3)
+	DF_CA_6Dernier_MoisAn = Df_Resultat_Mensuel.tail(6)
+	DF_CA_12Dernier_MoisAn = Df_Resultat_Mensuel.tail(12)
+	CA_Dernier_MoisAn = DF_CA_Dernier_MoisAn["Sy_Solde_Glo_Mont"].sum()
+	CA_3Dernier_MoisAn=DF_CA_3Dernier_MoisAn["Sy_Solde_Glo_Mont"].sum()
+	CA_6Dernier_MoisAn=DF_CA_6Dernier_MoisAn["Sy_Solde_Glo_Mont"].sum()
+	CA_12Dernier_MoisAn=DF_CA_12Dernier_MoisAn["Sy_Solde_Glo_Mont"].sum()
+
+	# calcul des cumuls annuels du CA
+	Df_Resultat_Annuel = Df_Resultat_Mensuel.groupby(["Sy_An"]).sum(["Sy_Solde_Glo_Mont"])
+
+	# calcul des cumuls annuels des charges Proprio Totales
+	Df_ChPT_Annuel = Df_Resultat_Mensuel.groupby(["Sy_An"]).sum(["Sy_ChargePTot"])
+	
+	# calcul des cumuls annuels des charges Proprio de gestion
+	Df_ChPGest_Annuel = Df_Resultat_Mensuel.groupby(["Sy_An"]).sum(["Sy_ChargePGest"])	
+	
+	# calcul des cumuls annuels des charges Proprio d'assurance impayé '
+	Df_ChPAssImp_Annuel = Df_Resultat_Mensuel.groupby(["Sy_An"]).sum(["Sy_ChargePAssImp"])
+	
+	# calcul des cumuls annuels des charges Proprio Appels syndic et loi Alur '
+	Df_ChPCoprAlur_Annuel = Df_Resultat_Mensuel.groupby(["Sy_An"]).sum(["Sy_ChargePCoprAlur"])	
+	# calcul des cumuls annuels des charges Proprio d'assurance impayé '
+	Df_Loyer_Annuel = Df_Resultat_Mensuel.groupby(["Sy_An"]).sum(["Sy_Loyer"])
+	# calcul des cumuls annuels des charges Proprio d'assurance impayé '
+	Df_ChargLoc_Annuel = Df_Resultat_Mensuel.groupby(["Sy_An"]).sum(["Sy_ChargLoc"])
+	# calcul des cumuls annuels des charges Proprio d'assurance impayé '
+	Df_DiversLoc_Annuel = Df_Resultat_Mensuel.groupby(["Sy_An"]).sum(["Sy_DiversLoc"])
+	
+	# calcul du cumul du CA de chaque résidence depuis le debut de son exploitation. c'est un df donc la valeur se récupère par TotalCumulResidence.iloc[0]
+	TotalCumulResidence = Df_Resultat_Annuel.sum(axis=0)
+
+
+	# calcul du cumul du CA de chaque résidence depuis le début de son exploitation + montant investi + ratio de couverture CAcumulé/investissement
+	TauxdeRemboursement = TotalCumulResidence/Liste_immobilier[NomResidence][1]
+	
+	# identification du montant investi
+	MontantInvesti = Liste_immobilier[NomResidence][1]
+	
+	# identification de la date debut résidence
+	DateDebutResid = Liste_immobilier[NomResidence][0]
+	
+	# calcul du nombre de mois d'ownership de la résidence
+	CurrentMonth = datetime.datetime.today().month
+	CurrentYear = datetime.datetime.today().year
+	EcartYear = CurrentYear-int(DateDebutResid[0:4])
+	EcartMonth = CurrentMonth-int(DateDebutResid[5:7])
+	NbMoisOwnership = EcartYear*12 + EcartMonth
+	# calcul du rendement annuel : taux de remboursement divisé par nb mois ownership et x 12
+	Rendement_Annuel = TauxdeRemboursement.iloc[0]/NbMoisOwnership *12
+	
+		# df etant trié chrono, le ChargeProprio du dernier mois est le dernier enregistrement tail(1) de Df_Resultat_Mensuel soit de DF_CA_Dernier_MoisAn, et les 12 derniers sont tail(12) de Df_Resultat_Mensuel soit de DF_CA_12Dernier_MoisAn
+	ChPT_Dernier_MoisAn = DF_CA_Dernier_MoisAn["Sy_ChargePTot"].sum()
+	ChPT_12Dernier_MoisAn=DF_CA_12Dernier_MoisAn["Sy_ChargePTot"].sum()
+	
+	ChPGest_Dernier_MoisAn = DF_CA_Dernier_MoisAn["Sy_ChargePGest"].sum()
+	ChPGest_12Dernier_MoisAn=DF_CA_12Dernier_MoisAn["Sy_ChargePGest"].sum()
+	
+	ChPAssImp_Dernier_MoisAn = DF_CA_Dernier_MoisAn["Sy_ChargePAssImp"].sum()
+	ChPAssImp_12Dernier_MoisAn=DF_CA_12Dernier_MoisAn["Sy_ChargePAssImp"].sum()
+	
+	ChPCoprAlur_Dernier_MoisAn = DF_CA_Dernier_MoisAn["Sy_ChargePCoprAlur"].sum()
+	ChPCoprAlur_12Dernier_MoisAn=DF_CA_12Dernier_MoisAn["Sy_ChargePCoprAlur"].sum()
+	
+	Loyer_Dernier_MoisAn = DF_CA_Dernier_MoisAn["Sy_Loyer"].sum()
+	Loyer_12Dernier_MoisAn=DF_CA_12Dernier_MoisAn["Sy_Loyer"].sum()	
+	
+	ChargLoc_Dernier_MoisAn = DF_CA_Dernier_MoisAn["Sy_ChargLoc"].sum()
+	ChargLoc_12Dernier_MoisAn=DF_CA_12Dernier_MoisAn["Sy_ChargLoc"].sum()		
+	
+	DiversLoc_Dernier_MoisAn = DF_CA_Dernier_MoisAn["Sy_DiversLoc"].sum()
+	DiversLoc_12Dernier_MoisAn=DF_CA_12Dernier_MoisAn["Sy_DiversLoc"].sum()			
+	
+#	Liste_Montant_Investi
+	# calcul de la moyenne annuelle en année pleine = en enlevant la premiere annee incomplète et l'année en cours incomplète pour avoir des vraies moyennes sur 12 mois. 
+	
+	#sélection des cumuls annuels en enlevant la premiere annee incomplète et l'année en cours incomplète pour avoir des vraies moyennes sur 12 mois. L'astuce est de sélectionner par Sy_Mois ==78 car 1+2+3+...+11+12 =78 qui est donc la valeur pour Sy_Mois en cumul annuel sur 12 mois
+	Df_Resultat_Annuel_pur = Df_Resultat_Annuel[Df_Resultat_Annuel["Sy_Mois"] == 78]
+	Df_ChPT_Annuel_pur = Df_ChPT_Annuel[Df_Resultat_Annuel["Sy_Mois"] == 78]
+	Df_ChPGest_Annuel_pur = Df_ChPGest_Annuel[Df_Resultat_Annuel["Sy_Mois"] == 78]
+	Df_ChPAssImp_Annuel_pur = Df_ChPAssImp_Annuel[Df_Resultat_Annuel["Sy_Mois"] == 78]
+	Df_ChPCoprAlur_Annuel_pur = Df_ChPCoprAlur_Annuel[Df_Resultat_Annuel["Sy_Mois"] == 78]
+	Df_Loyer_Annuel_pur = Df_Loyer_Annuel[Df_Resultat_Annuel["Sy_Mois"] == 78]
+	Df_ChargLoc_Annuel_pur = Df_ChargLoc_Annuel[Df_Resultat_Annuel["Sy_Mois"] == 78]
+	Df_DiversLoc_Annuel_pur = Df_DiversLoc_Annuel[Df_Resultat_Annuel["Sy_Mois"] == 78]
+
+	Resultat_Moy_Annuel = Df_Resultat_Annuel_pur.mean(axis=0)
+	ChPT_Moy_Annuel = Df_ChPT_Annuel_pur.mean(axis=0)
+	ChPGest_Moy_Annuel = Df_ChPGest_Annuel_pur.mean(axis=0)
+	ChPAssImp_Moy_Annuel = Df_ChPAssImp_Annuel_pur.mean(axis=0)
+	ChPCoprAlur_Moy_Annuel = Df_ChPCoprAlur_Annuel_pur.mean(axis=0)
+	Loyer_Moy_Annuel = Df_Loyer_Annuel_pur.mean(axis=0)
+	ChargLoc_Moy_Annuel = Df_ChargLoc_Annuel_pur.mean(axis=0)
+	DiversLoc_Moy_Annuel = Df_DiversLoc_Annuel_pur.mean(axis=0)			
+	
+	Resultat_Moy_Mensuel = 	Resultat_Moy_Annuel/12
+	
+
+	Dico_TDB1= {
+		"Appart_Nom": NomResidence,
+		"CA_Dernier_mois":"{:.0f}".format(CA_Dernier_MoisAn),
+		"CA_Mensuel_Moyen": "{:.0f}".format(Resultat_Moy_Mensuel["Sy_Solde_Glo_Mont"]),
+		"Ratio_DernMois_vs_Moyen":  "{:.2f}".format(CA_Dernier_MoisAn/Resultat_Moy_Mensuel["Sy_Solde_Glo_Mont"]),
+		"CA_Trois_Dernier_mois": "{:.0f}".format(CA_3Dernier_MoisAn),
+		"CA_Trimestre_Moyen": "{:.0f}".format(Resultat_Moy_Mensuel["Sy_Solde_Glo_Mont"]*3),
+		"Ratio_3DernMois_vs_TrimMoyen": "{:.2f}".format(CA_3Dernier_MoisAn/(Resultat_Moy_Mensuel["Sy_Solde_Glo_Mont"]*3)),
+		"CA_Douze_Dernier_mois": "{:.0f}".format(CA_12Dernier_MoisAn),
+		"CA_Annuel_Moyen": "{:.0f}".format(Resultat_Moy_Annuel["Sy_Solde_Glo_Mont"]),
+		"Ratio_12DernMois_vs_AnMoyen":  "{:.2f}".format(CA_12Dernier_MoisAn/Resultat_Moy_Annuel["Sy_Solde_Glo_Mont"]),
+		"CA_12ProchMois_Previsionnel": "{:.0f}".format(CA_6Dernier_MoisAn*2),
+		"L11_Montant_Investi": MontantInvesti,
+		"L12_CA_Total_Cumul": int(TotalCumulResidence.iloc[0]),
+		"L13_Taux_de_Remboursement": "{:.2f}".format(int(TotalCumulResidence.iloc[0])/ MontantInvesti),
+		"L14_Date_Debut_Residence": DateDebutResid,
+		"L15_Nb_Mois_Residence": NbMoisOwnership,
+		"L16_Rendement_Annuel":float("{:.3f}".format( Rendement_Annuel)),
+		"L17_ChargeProprioTot_DernMois":"{:.0f}".format( ChPT_Dernier_MoisAn),
+		"L18_ChargeProprioTot_12DernMs":"{:.0f}".format( ChPT_12Dernier_MoisAn),
+		"L19_ChargeProprioTot_Annuel_Moy":"{:.0f}".format(ChPT_Moy_Annuel.iloc[2]),
+		"L20_Ratio_CharPTot_12DernMsVsMoyan": "{:.2f}".format(ChPT_12Dernier_MoisAn /ChPT_Moy_Annuel.iloc[2]) ,
+		"L21_ChargeP_GesLoca_DernMois": "{:.0f}".format(ChPGest_Dernier_MoisAn),
+		"L22_ChargeP_GesLoca_12DernMs": "{:.0f}".format(ChPGest_12Dernier_MoisAn),
+		"L23_ChargeP_GesLoca_Annuel_Moy": "{:.0f}".format(ChPGest_Moy_Annuel.iloc[3]),
+		"L24_ChargeP_GesLoca_12DernMsVsMoyan": "{:.2f}".format(ChPGest_12Dernier_MoisAn /ChPGest_Moy_Annuel.iloc[3]),
+		"L25_ChargeP_AssImpay_DernMois":  "{:.0f}".format(ChPAssImp_Dernier_MoisAn),
+		"L26_ChargeP_AssImpay_12DernMs":  "{:.0f}".format(ChPAssImp_12Dernier_MoisAn),
+		"L27_ChargeP_AssImpay_Annuel_Moy": "{:.0f}".format(ChPAssImp_Moy_Annuel.iloc[4]),
+		"L28_ChargeP_AssImpay_12DernMsVsMoyan":  "{:.2f}".format(ChPAssImp_12Dernier_MoisAn /ChPAssImp_Moy_Annuel.iloc[4]),
+		"L29_ChargeP_CoproAlur_DernMois":  "{:.0f}".format(ChPCoprAlur_Dernier_MoisAn),
+		"L30_ChargeP_CoproAlur_12DernMs": "{:.0f}".format(ChPCoprAlur_12Dernier_MoisAn),
+		"L31_ChargeP_CoproAlur_Annuel_Moy": "{:.0f}".format(ChPCoprAlur_Moy_Annuel.iloc[5]),
+		"L32_ChargeP_CoproAlur_12DernMsVsMoyan": "{:.2f}".format(ChPCoprAlur_12Dernier_MoisAn /ChPCoprAlur_Moy_Annuel.iloc[5]),
+		"L33_Loyer_DernMois": "{:.0f}".format(Loyer_Dernier_MoisAn),
+		
+		"L34_Loyer_12DernMs":   "{:.0f}".format(Loyer_12Dernier_MoisAn),
+		"L35_Loyer_Annuel_Moy": "{:.0f}".format(Loyer_Moy_Annuel.iloc[6]),
+		"L36_Loyer_12DernMsVsMoyan": "{:.2f}".format(Loyer_12Dernier_MoisAn /Loyer_Moy_Annuel.iloc[6]),
+		"L37_ChargeLoc_DernMois": "{:.0f}".format(ChargLoc_Dernier_MoisAn),
+		"L38_ChargeLoc_12DernMs":  "{:.0f}".format(ChargLoc_12Dernier_MoisAn),
+		"L39_ChargeLoc_Annuel_Moy": "{:.0f}".format(ChargLoc_Moy_Annuel.iloc[7]),
+		"L40_ChargeLoc_12DernMsVsMoyan":  "{:.2f}".format(ChargLoc_12Dernier_MoisAn /ChargLoc_Moy_Annuel.iloc[7]),
+		"L41_TaxOrdur_DernMois":"{:.0f}".format(DiversLoc_Dernier_MoisAn),
+		"L42_TaxOrdur_12DernMs": "{:.0f}".format(DiversLoc_12Dernier_MoisAn),
+		"L43_TaxOrdur_Annuel_Moy":  "{:.0f}".format(DiversLoc_Moy_Annuel.iloc[8]),
+		"L44_TaxOrdur_12DernMsVsMoyan": "{:.2f}".format(DiversLoc_12Dernier_MoisAn /DiversLoc_Moy_Annuel.iloc[8])
+		}
+	
+	Df_Dico_TDB1 = pd.DataFrame.from_dict (Dico_TDB1,orient="index")	
+	print ("DF_Dico_TDB1 de", NomResidence,  Df_Dico_TDB1)
+		
+	return Df_Resultat_Mensuel,Df_Resultat_Annuel, TotalCumulResidence, Df_Resultat_Annuel_pur, Resultat_Moy_Annuel, TauxdeRemboursement, Resultat_Moy_Mensuel, Dico_TDB1	
+	
+
+	#on renvoie le df mensuel + le df annuel + le total cumul depuis origine +  le df des valeurs annuelles en année pleine + la moyenne annuelle en année pleine + le taux de remboursement, la moyenne mensuelle, le dictionnaire du tableau de bord page 1
+
+
+# II) LANCEMENT DE TOUS LES CALCULS SUR LA BASE DES FONCTIONS CI-AVANT
+
+# II-1) INITIALISATION DES PARAMETRES
+
+# II-1-1) MY TABLEAU CORRESPONDANCE IMMEUBLE- DATE DEBUT DE'S QUITTANCES -MONTANT DE L'INVESTISSEMENT
+Liste_immobilier = {"appartement Stalingrad": ( "2012-04", 158346 ),"appartement Pasteur" : ( "2012-04" ,178372),
+"appartement LutherKing" : ("2021-09", 231062),"appartement Castille" : ("2012-04" , 154280)}
+# format de la liste dico {NomResidence : Tuple des parametres de la residence contenant () date debut des quittances , investissement initial en euros) }
+Nb_Residence = len(Liste_immobilier)
+Nb_Residence_ResteATraiter = Nb_Residence
+# servira pour cumuler les stats des 4 residences
+
+
+#  II-1-2) MY TABLEAU CORRESPONDANCE IMMEUBLE- MONTANT DE L'INVESTISSEMENT'
+Liste_Montant_Investi = {"appartement Stalingrad": 158346, "appartement Pasteur" : 178372,
+"appartement LutherKing" : 231062,"appartement Castille" : 154280 }
+
+
+# II-1-3) ===DEFINITION DU CHEMIN ET DU FICHIER
+dirPath = "/storage/emulated/0/Dev/GesResid/"
+dirPathOut = "/storage/emulated/0/Dev/GesResid/"
+Nom_Fichier_Excel = "Suivi_Invest_TousApparts.xlsx"
+
+#chemin et fichier du fichier source contenant toutes les quittances
+PathFile = dirPath + Nom_Fichier_Excel
+
+#chemin et nom fichier qui contiendra le C.A. mensuel par résidence, résultat du traitement
+PathFileCA = dirPathOut + "CAMensuel.xlsx"
+My_sheet_name="Quittances"
+
+#chemin et nom fichier qui contiendra le tableau de bord global des résidences
+PathFileTDB = dirPathOut + "TDB_Residences.xlsx"
+
+#II-2) ===IMPORT DU EXCEL SOURCE VERS UN DATA FRAME
+Immodf= pd.read_excel(PathFile, sheet_name= My_sheet_name)
+MoisDebut= 4
+AnDebut = 2012
+MoisFin =3
+AnFin = 2024
+
+#II-3) ===CREATION DU DATA FRAME DU C.A. MENSUEL DES RESIDENCES
+
+# initialisation de DF_CA_Toutes_Residences qui contiendra les CA mensuels de toutes les résidences
+DF_CA_Toutes_Residences= pd.DataFrame(
+	{
+	"Sy_Solde_Glo_Mont": [],
+	"Sy_An": [],
+	"Sy_Mois": [],
+	"Appart_Nom": [],
+	}
+	)
+	
+#II-3bis) ===CREATION DU DATA FRAME DE LA PREMIERE PAGE DU DATA FRAME
+# initialisation du flag disant qu'on traite la premiere residence
+Flag_1st_Resid = True
+
+#  initialisation du dico dans lequel on calculera le cumul des 4 résidences
+DicoGlobal_TDB1= {"Appart_Nom": [ ],"CA_Dernier_mois": 0, "CA_Mensuel_Moyen": 0 , "Ratio_DernMois_vs_Moyen": 0,"CA_Trois_Dernier_mois": 0, "CA_Trimestre_Moyen": 0,"Ratio_3DernMois_vs_TrimMoyen": 0,
+"CA_Douze_Dernier_mois": 0,
+"CA_Annuel_Moyen": 0,
+"Ratio_12DernMois_vs_AnMoyen": 0,
+"CA_12ProchMois_Previsionnel": 0,
+"L11_Montant_Investi" : 0,
+"L12_CA_Total_Cumul" :0,
+"L13_Taux_de_Remboursement" :0,
+"L14_Date_Debut_Residence": "2024-03",
+"L15_Nb_Mois_Residence":0,
+"L16_Rendement_Annuel":0.000,
+"L17_ChargeProprioTot_DernMois":0,
+"L18_ChargeProprioTot_12DernMs":0,
+"L19_ChargeProprioTot_Annuel_Moy":0,
+"L20_Ratio_CharPTot_12DernMsVsMoyan":0.00,
+"L21_ChargeP_GesLoca_DernMois":0,
+"L22_ChargeP_GesLoca_12DernMs":0,
+"L23_ChargeP_GesLoca_Annuel_Moy":0,
+"L24_ChargeP_GesLoca_12DernMsVsMoyan":0.00,
+"L25_ChargeP_AssImpay_DernMois":0,
+"L26_ChargeP_AssImpay_12DernMs":0,
+"L27_ChargeP_AssImpay_Annuel_Moy":0,
+"L28_ChargeP_AssImpay_12DernMsVsMoyan":0.00,
+"L29_ChargeP_CoproAlur_DernMois":0,
+"L30_ChargeP_CoproAlur_12DernMs":0,
+"L31_ChargeP_CoproAlur_Annuel_Moy":0,
+"L32_ChargeP_CoproAlur_12DernMsVsMoyan":0.00,
+"L33_Loyer_DernMois":0,
+"L34_Loyer_12DernMs":0,
+"L35_Loyer_Annuel_Moy":0,
+"L36_Loyer_12DernMsVsMoyan":0.00,
+"L37_ChargeLoc_DernMois":0,
+"L38_ChargeLoc_12DernMs":0,
+"L39_ChargeLoc_Annuel_Moy":0,
+"L40_ChargeLoc_12DernMsVsMoyan":0.00,
+"L41_TaxOrdur_DernMois":0,
+"L42_TaxOrdur_12DernMs":0,
+"L43_TaxOrdur_Annuel_Moy":0,
+"L44_TaxOrdur_12DernMsVsMoyan":0.00}
+
+# initialisation des listes qui seront ajoutee au dataframe TDB, chaque liste sera une ligne du DF
+L0_Appart_Nom =[ ] 
+L1_CA_Dernier_mois =[ ]
+L2_CA_Mensuel_Moyen =[ ] 
+L3_Ratio_DernMois_vs_Moyen =[ ] 
+L4_CA_Trois_Dernier_mois =[ ] 
+L5_CA_Trimestre_Moyen =[ ] 
+L6_Ratio_3DernMois_vs_TrimMoyen =[ ] 
+L7_CA_Douze_Dernier_mois =[ ] 
+L8_CA_Annuel_Moyen =[ ] 
+L9_Ratio_12DernMois_vs_AnMoyen =[ ] 
+L10_CA_12ProchMois_Previsionnel =[ ] 
+L11_Montant_Investi =[ ] 
+L12_CA_Total_Cumul =[ ] 
+L13_Taux_de_Remboursement =[ ] 
+L14_Date_Debut_Residence =[ ] 
+L15_Nb_Mois_Residence =[ ] 
+L16_Rendement_Annuel =[ ] #taux de remboursement ramené à 1 année'
+L17_ChargeProprioTot_DernMois =[ ] 
+L18_ChargeProprioTot_12DernMs=[ ] 
+L19_ChargeProprioTot_Annuel_Moy =[ ] 
+L20_Ratio_CharPTot_12DernMsVsMoyan=[ ] 
+L21_ChargeP_GesLoca_DernMois =[ ] 
+L22_ChargeP_GesLoca_12DernMs =[ ] 
+L23_ChargeP_GesLoca_Annuel_Moy  =[ ] 
+L24_ChargeP_GesLoca_12DernMsVsMoyan =[ ] 
+L25_ChargeP_AssImpay_DernMois =[ ] 
+L26_ChargeP_AssImpay_12DernMs =[ ] 
+L27_ChargeP_AssImpay_Annuel_Moy  =[ ] 
+L28_ChargeP_AssImpay_12DernMsVsMoyan =[ ] 
+L29_ChargeP_CoproAlur_DernMois =[ ] 
+L30_ChargeP_CoproAlur_12DernMs =[ ] 
+L31_ChargeP_CoproAlur_Annuel_Moy  =[ ] 
+L32_ChargeP_CoproAlur_12DernMsVsMoyan =[ ] 
+L33_Loyer_DernMois =[ ] 
+L34_Loyer_12DernMs =[ ] 
+L35_Loyer_Annuel_Moy  =[ ] 
+L36_Loyer_12DernMsVsMoyan =[ ]
+L37_ChargeLoc_DernMois =[ ] 
+L38_ChargeLoc_12DernMs =[ ] 
+L39_ChargeLoc_Annuel_Moy  =[ ] 
+L40_ChargeLoc_12DernMsVsMoyan =[ ]
+L41_TaxOrdur_DernMois =[ ] 
+L42_TaxOrdur_12DernMs =[ ] 
+L43_TaxOrdur_Annuel_Moy  =[ ] 
+L44_TaxOrdur_12DernMsVsMoyan =[ ]
+
+# Récupération dans data frame Df_CA_Residence du CA mensuel de la résidence sur la période
+for My_Residence in Liste_immobilier :
+	if "appartement" in My_Residence :
+		Df_CA_Residence ,Df_Resultat_Annuel, TotalCumulResidence, Df_Resultat_Annuel_pur, Df_Resultat_Moy_Annuel, TauxdeRemboursement,Df_Resultat_Moy_Mensuel, Dico_TDB1 = Calcul_CA_Mensuel (My_Residence, Immodf, MoisDebut, AnDebut, MoisFin, AnFin, int(Liste_immobilier[My_Residence][0][:4]),int(Liste_immobilier[My_Residence][0][-2:])) 
+# int(Liste_immobilier[My_Residence][:4]) est l'année de démarrage de la résidence et int(Liste_immobilier[My_Residence][-2:]) est le mois de démarrage
+
+
+# affectation de Df_CA_Residence à DF_CA_Toutes_Residences en concaténant
+		DF_CA_Toutes_Residences= pd.concat([DF_CA_Toutes_Residences, Df_CA_Residence])
+		
+		# affectation des valeurs dans les listes qui seront ajoutées au dataframe TDB pour les 4 residences
+		L0_Appart_Nom.append(Dico_TDB1["Appart_Nom"])	
+		L1_CA_Dernier_mois.append(Dico_TDB1["CA_Dernier_mois"]) 
+		L2_CA_Mensuel_Moyen.append(Dico_TDB1["CA_Mensuel_Moyen"]) 
+		L3_Ratio_DernMois_vs_Moyen.append(Dico_TDB1["Ratio_DernMois_vs_Moyen"])
+		L4_CA_Trois_Dernier_mois.append(Dico_TDB1["CA_Trois_Dernier_mois"]) 
+		L5_CA_Trimestre_Moyen.append(Dico_TDB1["CA_Trimestre_Moyen"]) 
+		L6_Ratio_3DernMois_vs_TrimMoyen.append(Dico_TDB1["Ratio_3DernMois_vs_TrimMoyen"]) 
+		L7_CA_Douze_Dernier_mois.append(Dico_TDB1["CA_Douze_Dernier_mois"]) 
+		L8_CA_Annuel_Moyen.append(Dico_TDB1["CA_Annuel_Moyen"]) 
+		L9_Ratio_12DernMois_vs_AnMoyen.append(Dico_TDB1["Ratio_12DernMois_vs_AnMoyen"]) 
+		L10_CA_12ProchMois_Previsionnel.append(Dico_TDB1["CA_12ProchMois_Previsionnel"])
+		L11_Montant_Investi.append(Dico_TDB1["L11_Montant_Investi"])
+		L12_CA_Total_Cumul.append(Dico_TDB1["L12_CA_Total_Cumul"])
+		L13_Taux_de_Remboursement.append(Dico_TDB1["L13_Taux_de_Remboursement"])
+		L14_Date_Debut_Residence.append(Dico_TDB1["L14_Date_Debut_Residence"])
+		L15_Nb_Mois_Residence.append(Dico_TDB1["L15_Nb_Mois_Residence"])
+		L16_Rendement_Annuel.append(Dico_TDB1["L16_Rendement_Annuel"])
+		L17_ChargeProprioTot_DernMois.append(Dico_TDB1["L17_ChargeProprioTot_DernMois"])
+		L18_ChargeProprioTot_12DernMs.append(Dico_TDB1["L18_ChargeProprioTot_12DernMs"])
+		L19_ChargeProprioTot_Annuel_Moy.append(Dico_TDB1["L19_ChargeProprioTot_Annuel_Moy"])
+		L20_Ratio_CharPTot_12DernMsVsMoyan.append(Dico_TDB1["L20_Ratio_CharPTot_12DernMsVsMoyan"])
+		L21_ChargeP_GesLoca_DernMois.append(Dico_TDB1["L21_ChargeP_GesLoca_DernMois"])
+		L22_ChargeP_GesLoca_12DernMs.append(Dico_TDB1["L22_ChargeP_GesLoca_12DernMs"])
+		L23_ChargeP_GesLoca_Annuel_Moy.append(Dico_TDB1["L23_ChargeP_GesLoca_Annuel_Moy"])
+		L24_ChargeP_GesLoca_12DernMsVsMoyan.append(Dico_TDB1["L24_ChargeP_GesLoca_12DernMsVsMoyan"])
+		L25_ChargeP_AssImpay_DernMois.append(Dico_TDB1["L25_ChargeP_AssImpay_DernMois"])
+		L26_ChargeP_AssImpay_12DernMs.append(Dico_TDB1["L26_ChargeP_AssImpay_12DernMs"])
+		L27_ChargeP_AssImpay_Annuel_Moy.append(Dico_TDB1["L27_ChargeP_AssImpay_Annuel_Moy"])
+		L28_ChargeP_AssImpay_12DernMsVsMoyan.append(Dico_TDB1["L28_ChargeP_AssImpay_12DernMsVsMoyan"])
+		L29_ChargeP_CoproAlur_DernMois.append(Dico_TDB1["L29_ChargeP_CoproAlur_DernMois"])
+		L30_ChargeP_CoproAlur_12DernMs.append(Dico_TDB1["L30_ChargeP_CoproAlur_12DernMs"])
+		L31_ChargeP_CoproAlur_Annuel_Moy.append(Dico_TDB1["L31_ChargeP_CoproAlur_Annuel_Moy"])
+		L32_ChargeP_CoproAlur_12DernMsVsMoyan.append(Dico_TDB1["L32_ChargeP_CoproAlur_12DernMsVsMoyan"])
+		L33_Loyer_DernMois.append(Dico_TDB1["L33_Loyer_DernMois"])
+		L34_Loyer_12DernMs.append(Dico_TDB1["L34_Loyer_12DernMs"])
+		L35_Loyer_Annuel_Moy.append(Dico_TDB1["L35_Loyer_Annuel_Moy"])
+		L36_Loyer_12DernMsVsMoyan.append(Dico_TDB1["L36_Loyer_12DernMsVsMoyan"])
+		L37_ChargeLoc_DernMois.append(Dico_TDB1["L37_ChargeLoc_DernMois"])
+		L38_ChargeLoc_12DernMs.append(Dico_TDB1["L38_ChargeLoc_12DernMs"])
+		L39_ChargeLoc_Annuel_Moy.append(Dico_TDB1["L39_ChargeLoc_Annuel_Moy"])
+		L40_ChargeLoc_12DernMsVsMoyan.append(Dico_TDB1["L40_ChargeLoc_12DernMsVsMoyan"])
+		L41_TaxOrdur_DernMois.append(Dico_TDB1["L41_TaxOrdur_DernMois"])
+		L42_TaxOrdur_12DernMs.append(Dico_TDB1["L42_TaxOrdur_12DernMs"])
+		L43_TaxOrdur_Annuel_Moy.append(Dico_TDB1["L43_TaxOrdur_Annuel_Moy"])
+		L44_TaxOrdur_12DernMsVsMoyan.append(Dico_TDB1["L44_TaxOrdur_12DernMsVsMoyan"])
+
+		# une fois les stats de la résidence calculées, on décrémente le nombre de résidences à traiter
+		Nb_Residence_ResteATraiter -=1
+		
+		# calcul du cumul pour l'ensemble des résidences qui augmente au fur et à mesure des calculs de stats de chaque résidence
+		DicoGlobal_TDB1["Appart_Nom"]="Toutes résidences"
+		DicoGlobal_TDB1["CA_Dernier_mois"] = DicoGlobal_TDB1["CA_Dernier_mois"] + int(Dico_TDB1["CA_Dernier_mois"])
+		DicoGlobal_TDB1["CA_Mensuel_Moyen"] = DicoGlobal_TDB1["CA_Mensuel_Moyen"] + int(Dico_TDB1["CA_Mensuel_Moyen"])
+		DicoGlobal_TDB1["Ratio_DernMois_vs_Moyen"] = "{:.2f}".format(DicoGlobal_TDB1["CA_Dernier_mois"] / int(DicoGlobal_TDB1["CA_Mensuel_Moyen"]))
+		DicoGlobal_TDB1["CA_Trois_Dernier_mois"] = DicoGlobal_TDB1["CA_Trois_Dernier_mois"] + int(Dico_TDB1["CA_Trois_Dernier_mois"])
+		DicoGlobal_TDB1["CA_Trimestre_Moyen"] = DicoGlobal_TDB1["CA_Trimestre_Moyen"] + int(Dico_TDB1["CA_Trimestre_Moyen"])
+		DicoGlobal_TDB1["Ratio_3DernMois_vs_TrimMoyen"] = "{:.2f}".format(DicoGlobal_TDB1["CA_Trois_Dernier_mois"] / int(DicoGlobal_TDB1["CA_Trimestre_Moyen"]))
+		DicoGlobal_TDB1["CA_Douze_Dernier_mois"] = DicoGlobal_TDB1["CA_Douze_Dernier_mois"] + int(Dico_TDB1["CA_Douze_Dernier_mois"])
+		DicoGlobal_TDB1["CA_Annuel_Moyen"] = DicoGlobal_TDB1["CA_Annuel_Moyen"] + int(Dico_TDB1["CA_Annuel_Moyen"])
+		DicoGlobal_TDB1["Ratio_12DernMois_vs_AnMoyen"] = "{:.2f}".format(DicoGlobal_TDB1["CA_Douze_Dernier_mois"] / int(DicoGlobal_TDB1["CA_Annuel_Moyen"]))
+		print("Dico_TDB1[L11_Montant_Investi]", Dico_TDB1["L11_Montant_Investi"])
+		DicoGlobal_TDB1["CA_12ProchMois_Previsionnel"] = DicoGlobal_TDB1["CA_12ProchMois_Previsionnel"] + int(Dico_TDB1["CA_12ProchMois_Previsionnel"])
+		print("DicoGlobal_TDB1[L11_Montant_Investi]", DicoGlobal_TDB1["L11_Montant_Investi"])
+		DicoGlobal_TDB1["L11_Montant_Investi"] = DicoGlobal_TDB1["L11_Montant_Investi"] + int(Dico_TDB1["L11_Montant_Investi"])
+		DicoGlobal_TDB1["L12_CA_Total_Cumul"] = DicoGlobal_TDB1["L12_CA_Total_Cumul"] + int(Dico_TDB1["L12_CA_Total_Cumul"])
+		DicoGlobal_TDB1["L13_Taux_de_Remboursement"] = "{:.2f}".format(DicoGlobal_TDB1["L12_CA_Total_Cumul"]/ int(DicoGlobal_TDB1["L11_Montant_Investi"]))
+		if DicoGlobal_TDB1["L14_Date_Debut_Residence"] >  Dico_TDB1["L14_Date_Debut_Residence"]:
+			DicoGlobal_TDB1["L14_Date_Debut_Residence"] = Dico_TDB1["L14_Date_Debut_Residence"]# on prend la date la plus ancienne
+		DicoGlobal_TDB1["L15_Nb_Mois_Residence"] = DicoGlobal_TDB1["L15_Nb_Mois_Residence"] + int(Dico_TDB1["L15_Nb_Mois_Residence"])
+		DicoGlobal_TDB1["L16_Rendement_Annuel"] = "{:.3f}".format((float(DicoGlobal_TDB1["L13_Taux_de_Remboursement"] )/ int(DicoGlobal_TDB1["L15_Nb_Mois_Residence"])*12)) #A CALCULER
+		DicoGlobal_TDB1["L17_ChargeProprioTot_DernMois"] = DicoGlobal_TDB1["L17_ChargeProprioTot_DernMois"] + int(Dico_TDB1["L17_ChargeProprioTot_DernMois"])
+		DicoGlobal_TDB1["L18_ChargeProprioTot_12DernMs"] = DicoGlobal_TDB1["L18_ChargeProprioTot_12DernMs"] + int(Dico_TDB1["L18_ChargeProprioTot_12DernMs"])
+		DicoGlobal_TDB1["L19_ChargeProprioTot_Annuel_Moy"] = DicoGlobal_TDB1["L19_ChargeProprioTot_Annuel_Moy"] + int(Dico_TDB1["L19_ChargeProprioTot_Annuel_Moy"])
+		DicoGlobal_TDB1["L20_Ratio_CharPTot_12DernMsVsMoyan"] = "{:.2f}".format(DicoGlobal_TDB1["L18_ChargeProprioTot_12DernMs"] / int(DicoGlobal_TDB1["L19_ChargeProprioTot_Annuel_Moy"]))
+		DicoGlobal_TDB1["L21_ChargeP_GesLoca_DernMois"] = DicoGlobal_TDB1["L21_ChargeP_GesLoca_DernMois"] + int(Dico_TDB1["L21_ChargeP_GesLoca_DernMois"])
+		DicoGlobal_TDB1["L22_ChargeP_GesLoca_12DernMs"] = DicoGlobal_TDB1["L22_ChargeP_GesLoca_12DernMs"] + int(Dico_TDB1["L22_ChargeP_GesLoca_12DernMs"])
+		DicoGlobal_TDB1["L23_ChargeP_GesLoca_Annuel_Moy"] = DicoGlobal_TDB1["L23_ChargeP_GesLoca_Annuel_Moy"] + int(Dico_TDB1["L23_ChargeP_GesLoca_Annuel_Moy"])
+		DicoGlobal_TDB1["L24_ChargeP_GesLoca_12DernMsVsMoyan"] = "{:.2f}".format(DicoGlobal_TDB1["L22_ChargeP_GesLoca_12DernMs"] / int(DicoGlobal_TDB1["L23_ChargeP_GesLoca_Annuel_Moy"]))
+		DicoGlobal_TDB1["L25_ChargeP_AssImpay_DernMois"] = DicoGlobal_TDB1["L25_ChargeP_AssImpay_DernMois"] + int(Dico_TDB1["L25_ChargeP_AssImpay_DernMois"])
+		DicoGlobal_TDB1["L26_ChargeP_AssImpay_12DernMs"] = DicoGlobal_TDB1["L26_ChargeP_AssImpay_12DernMs"] + int(Dico_TDB1["L26_ChargeP_AssImpay_12DernMs"])
+		DicoGlobal_TDB1["L27_ChargeP_AssImpay_Annuel_Moy"] = DicoGlobal_TDB1["L27_ChargeP_AssImpay_Annuel_Moy"] + int(Dico_TDB1["L27_ChargeP_AssImpay_Annuel_Moy"])
+		DicoGlobal_TDB1["L28_ChargeP_AssImpay_12DernMsVsMoyan"] = "{:.2f}".format(DicoGlobal_TDB1["L26_ChargeP_AssImpay_12DernMs"] / int(DicoGlobal_TDB1["L27_ChargeP_AssImpay_Annuel_Moy"]))
+		DicoGlobal_TDB1["L29_ChargeP_CoproAlur_DernMois"] = DicoGlobal_TDB1["L29_ChargeP_CoproAlur_DernMois"] + int(Dico_TDB1["L29_ChargeP_CoproAlur_DernMois"])
+		DicoGlobal_TDB1["L30_ChargeP_CoproAlur_12DernMs"] = DicoGlobal_TDB1["L30_ChargeP_CoproAlur_12DernMs"] + int(Dico_TDB1["L30_ChargeP_CoproAlur_12DernMs"])
+		DicoGlobal_TDB1["L31_ChargeP_CoproAlur_Annuel_Moy"] = DicoGlobal_TDB1["L31_ChargeP_CoproAlur_Annuel_Moy"] + int(Dico_TDB1["L31_ChargeP_CoproAlur_Annuel_Moy"])
+		DicoGlobal_TDB1["L32_ChargeP_CoproAlur_12DernMsVsMoyan"] = "{:.2f}".format(DicoGlobal_TDB1["L30_ChargeP_CoproAlur_12DernMs"] / int(DicoGlobal_TDB1["L31_ChargeP_CoproAlur_Annuel_Moy"]))
+		DicoGlobal_TDB1["L33_Loyer_DernMois"] = DicoGlobal_TDB1["L33_Loyer_DernMois"] + int(Dico_TDB1["L33_Loyer_DernMois"])
+		DicoGlobal_TDB1["L34_Loyer_12DernMs"] = DicoGlobal_TDB1["L34_Loyer_12DernMs"] + int(Dico_TDB1["L34_Loyer_12DernMs"])
+		DicoGlobal_TDB1["L35_Loyer_Annuel_Moy"] = DicoGlobal_TDB1["L35_Loyer_Annuel_Moy"] + int(Dico_TDB1["L35_Loyer_Annuel_Moy"])
+		DicoGlobal_TDB1["L36_Loyer_12DernMsVsMoyan"] = "{:.2f}".format(DicoGlobal_TDB1["L34_Loyer_12DernMs"] / int(DicoGlobal_TDB1["L35_Loyer_Annuel_Moy"]))
+		DicoGlobal_TDB1["L37_ChargeLoc_DernMois"] = DicoGlobal_TDB1["L37_ChargeLoc_DernMois"] + int(Dico_TDB1["L37_ChargeLoc_DernMois"])
+		DicoGlobal_TDB1["L38_ChargeLoc_12DernMs"] = DicoGlobal_TDB1["L38_ChargeLoc_12DernMs"] + int(Dico_TDB1["L38_ChargeLoc_12DernMs"])
+		DicoGlobal_TDB1["L39_ChargeLoc_Annuel_Moy"] = DicoGlobal_TDB1["L39_ChargeLoc_Annuel_Moy"] + int(Dico_TDB1["L39_ChargeLoc_Annuel_Moy"])
+		DicoGlobal_TDB1["L40_ChargeLoc_12DernMsVsMoyan"] = "{:.2f}".format(DicoGlobal_TDB1["L38_ChargeLoc_12DernMs"] / int(DicoGlobal_TDB1["L39_ChargeLoc_Annuel_Moy"]))
+		DicoGlobal_TDB1["L41_TaxOrdur_DernMois"] = DicoGlobal_TDB1["L41_TaxOrdur_DernMois"] + int(Dico_TDB1["L41_TaxOrdur_DernMois"])
+		DicoGlobal_TDB1["L42_TaxOrdur_12DernMs"] = DicoGlobal_TDB1["L42_TaxOrdur_12DernMs"] + int(Dico_TDB1["L42_TaxOrdur_12DernMs"])
+		DicoGlobal_TDB1["L43_TaxOrdur_Annuel_Moy"] = DicoGlobal_TDB1["L43_TaxOrdur_Annuel_Moy"] + int(Dico_TDB1["L43_TaxOrdur_Annuel_Moy"])
+		DicoGlobal_TDB1["L44_TaxOrdur_12DernMsVsMoyan"] ="{:.2f}".format(DicoGlobal_TDB1["L42_TaxOrdur_12DernMs"] / int(DicoGlobal_TDB1["L43_TaxOrdur_Annuel_Moy"]))
+		
+		if Nb_Residence_ResteATraiter ==0: # si vaut 0, on vient de faire les stats de la dernière résidence donc on peut y ajouter le 5e enregistrement pour "toutes résidences"
+
+			# on calcule d'abord la moyenne des L16_Rendement_Annuel : valeur proche = somme des 4 rendements divisé par nombre de résidences (4). elle est affectée dans DicoGlobal_TDB1et ensuite, elle sera affectée en 5e position de la liste L16_Rendement_Annuel
+			DicoGlobal_TDB1["L16_Rendement_Annuel"] = "{:.3f}".format(sum(L16_Rendement_Annuel)/len(L16_Rendement_Annuel))
+		
+		# affectation des stats cumulées toutes résidences dans les 11 listes Ce sont les listes L0 à L44 qui seront transférées vers Excel et non DicoGlobal_TDB1 qui ne sert qu'à l'affichage en print lors de l'exécution mais qui met aussi à jour la 5e colonne des listes L0 à L44
+	
+			L0_Appart_Nom.append(DicoGlobal_TDB1["Appart_Nom"])
+			L1_CA_Dernier_mois.append(DicoGlobal_TDB1["CA_Dernier_mois"])
+			L2_CA_Mensuel_Moyen.append(DicoGlobal_TDB1["CA_Mensuel_Moyen"])
+			L3_Ratio_DernMois_vs_Moyen.append(DicoGlobal_TDB1["Ratio_DernMois_vs_Moyen"])
+			L4_CA_Trois_Dernier_mois.append(DicoGlobal_TDB1["CA_Trois_Dernier_mois"])
+			L5_CA_Trimestre_Moyen.append(DicoGlobal_TDB1["CA_Trimestre_Moyen"])
+			L6_Ratio_3DernMois_vs_TrimMoyen.append(DicoGlobal_TDB1["Ratio_3DernMois_vs_TrimMoyen"])
+			L7_CA_Douze_Dernier_mois.append(DicoGlobal_TDB1["CA_Douze_Dernier_mois"])
+			L8_CA_Annuel_Moyen.append(DicoGlobal_TDB1["CA_Annuel_Moyen"])
+			L9_Ratio_12DernMois_vs_AnMoyen.append(Dico_TDB1["Ratio_12DernMois_vs_AnMoyen"])
+			L10_CA_12ProchMois_Previsionnel.append(DicoGlobal_TDB1["CA_12ProchMois_Previsionnel"])
+			L11_Montant_Investi.append(DicoGlobal_TDB1["L11_Montant_Investi"])
+			L12_CA_Total_Cumul.append(DicoGlobal_TDB1["L12_CA_Total_Cumul"])
+			L13_Taux_de_Remboursement.append(DicoGlobal_TDB1["L13_Taux_de_Remboursement"])
+			L14_Date_Debut_Residence.append(DicoGlobal_TDB1["L14_Date_Debut_Residence"])
+			L15_Nb_Mois_Residence.append(DicoGlobal_TDB1["L15_Nb_Mois_Residence"])
+			L16_Rendement_Annuel.append(DicoGlobal_TDB1["L16_Rendement_Annuel"])
+			L17_ChargeProprioTot_DernMois.append(DicoGlobal_TDB1["L17_ChargeProprioTot_DernMois"])
+			L18_ChargeProprioTot_12DernMs.append(DicoGlobal_TDB1["L18_ChargeProprioTot_12DernMs"])
+			L19_ChargeProprioTot_Annuel_Moy.append(DicoGlobal_TDB1["L19_ChargeProprioTot_Annuel_Moy"])
+			L20_Ratio_CharPTot_12DernMsVsMoyan.append(DicoGlobal_TDB1["L20_Ratio_CharPTot_12DernMsVsMoyan"])
+			L21_ChargeP_GesLoca_DernMois.append(DicoGlobal_TDB1["L21_ChargeP_GesLoca_DernMois"])
+			L22_ChargeP_GesLoca_12DernMs.append(DicoGlobal_TDB1["L22_ChargeP_GesLoca_12DernMs"])
+			L23_ChargeP_GesLoca_Annuel_Moy.append(DicoGlobal_TDB1["L23_ChargeP_GesLoca_Annuel_Moy"])
+			L24_ChargeP_GesLoca_12DernMsVsMoyan.append(DicoGlobal_TDB1["L24_ChargeP_GesLoca_12DernMsVsMoyan"])
+			L25_ChargeP_AssImpay_DernMois.append(DicoGlobal_TDB1["L25_ChargeP_AssImpay_DernMois"])
+			L26_ChargeP_AssImpay_12DernMs.append(DicoGlobal_TDB1["L26_ChargeP_AssImpay_12DernMs"])
+			L27_ChargeP_AssImpay_Annuel_Moy.append(DicoGlobal_TDB1["L27_ChargeP_AssImpay_Annuel_Moy"])
+			L28_ChargeP_AssImpay_12DernMsVsMoyan.append(DicoGlobal_TDB1["L28_ChargeP_AssImpay_12DernMsVsMoyan"])
+			L29_ChargeP_CoproAlur_DernMois.append(DicoGlobal_TDB1["L29_ChargeP_CoproAlur_DernMois"])
+			L30_ChargeP_CoproAlur_12DernMs.append(DicoGlobal_TDB1["L30_ChargeP_CoproAlur_12DernMs"])
+			L31_ChargeP_CoproAlur_Annuel_Moy.append(DicoGlobal_TDB1["L31_ChargeP_CoproAlur_Annuel_Moy"])
+			L32_ChargeP_CoproAlur_12DernMsVsMoyan.append(DicoGlobal_TDB1["L32_ChargeP_CoproAlur_12DernMsVsMoyan"])
+			L33_Loyer_DernMois.append(DicoGlobal_TDB1["L33_Loyer_DernMois"])
+			L34_Loyer_12DernMs.append(DicoGlobal_TDB1["L34_Loyer_12DernMs"])
+			L35_Loyer_Annuel_Moy.append(DicoGlobal_TDB1["L35_Loyer_Annuel_Moy"])
+			L36_Loyer_12DernMsVsMoyan.append(DicoGlobal_TDB1["L36_Loyer_12DernMsVsMoyan"])
+			L37_ChargeLoc_DernMois.append(DicoGlobal_TDB1["L37_ChargeLoc_DernMois"])
+			L38_ChargeLoc_12DernMs.append(DicoGlobal_TDB1["L38_ChargeLoc_12DernMs"])
+			L39_ChargeLoc_Annuel_Moy.append(DicoGlobal_TDB1["L39_ChargeLoc_Annuel_Moy"])
+			L40_ChargeLoc_12DernMsVsMoyan.append(DicoGlobal_TDB1["L40_ChargeLoc_12DernMsVsMoyan"])
+			L41_TaxOrdur_DernMois.append(DicoGlobal_TDB1["L41_TaxOrdur_DernMois"])
+			L42_TaxOrdur_12DernMs.append(DicoGlobal_TDB1["L42_TaxOrdur_12DernMs"])
+			L43_TaxOrdur_Annuel_Moy.append(DicoGlobal_TDB1["L43_TaxOrdur_Annuel_Moy"])
+			L44_TaxOrdur_12DernMsVsMoyan.append(DicoGlobal_TDB1["L44_TaxOrdur_12DernMsVsMoyan"])
+			print("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")
+			print("DicoGlobal_TDB1 final",DicoGlobal_TDB1)
+			
+			# Transfert vers un data frame des 44 listes avec les noms d'index ligne = stats et les noms de colonnes =résidences 
+			DF_TDB_Global = pd.DataFrame([L0_Appart_Nom,L1_CA_Dernier_mois, L2_CA_Mensuel_Moyen, L3_Ratio_DernMois_vs_Moyen, L4_CA_Trois_Dernier_mois, L5_CA_Trimestre_Moyen, L6_Ratio_3DernMois_vs_TrimMoyen, L7_CA_Douze_Dernier_mois, L8_CA_Annuel_Moyen, L9_Ratio_12DernMois_vs_AnMoyen, L10_CA_12ProchMois_Previsionnel, L11_Montant_Investi, L12_CA_Total_Cumul, L13_Taux_de_Remboursement, L14_Date_Debut_Residence, L15_Nb_Mois_Residence, L16_Rendement_Annuel, L17_ChargeProprioTot_DernMois,L18_ChargeProprioTot_12DernMs, L19_ChargeProprioTot_Annuel_Moy, L20_Ratio_CharPTot_12DernMsVsMoyan, L21_ChargeP_GesLoca_DernMois,L22_ChargeP_GesLoca_12DernMs, L23_ChargeP_GesLoca_Annuel_Moy, L24_ChargeP_GesLoca_12DernMsVsMoyan, L25_ChargeP_AssImpay_DernMois, L26_ChargeP_AssImpay_12DernMs, L27_ChargeP_AssImpay_Annuel_Moy, L28_ChargeP_AssImpay_12DernMsVsMoyan, L29_ChargeP_CoproAlur_DernMois, L30_ChargeP_CoproAlur_12DernMs, L31_ChargeP_CoproAlur_Annuel_Moy, L32_ChargeP_CoproAlur_12DernMsVsMoyan, L33_Loyer_DernMois, L34_Loyer_12DernMs, L35_Loyer_Annuel_Moy, L36_Loyer_12DernMsVsMoyan, L37_ChargeLoc_DernMois, L38_ChargeLoc_12DernMs, L39_ChargeLoc_Annuel_Moy, L40_ChargeLoc_12DernMsVsMoyan, L41_TaxOrdur_DernMois, L42_TaxOrdur_12DernMs, L43_TaxOrdur_Annuel_Moy, L44_TaxOrdur_12DernMsVsMoyan], index=["Appart_Nom","CA_Dernier_mois","CA_Mensuel_Moyen","Ratio_DernMois_vs_Moyen","CA_Trois_Dernier_mois","CA_Trimestre_Moyen","Ratio_3DernMois_vs_TrimMoyen","CA_Douze_Dernier_mois","CA_Annuel_Moyen","Ratio_12DernMois_vs_AnMoyen","CA_12ProchMois_Previsionnel", "L11_Montant_Investi", "L12_CA_Total_Cumul","L13_Taux_de_Remboursement","L14_Date_Debut_Residence","L15_Nb_Mois_Residence","L16_Rendement_Annuel","L17_ChargeProprioTot_DernMois","L18_ChargeProprioTot_12DernMs","L19_ChargeProprioTot_Annuel_Moy","L20_Ratio_CharPTot_12DernMsVsMoyan","L21_ChargeP_GesLoca_DernMois","L22_ChargeP_GesLoca_12DernMs","L23_ChargeP_GesLoca_Annuel_Moy","L24_ChargeP_GesLoca_12DernMsVsMoyan","L25_ChargeP_AssImpay_DernMois","L26_ChargeP_AssImpay_12DernMs","L27_ChargeP_AssImpay_Annuel_Moy","L28_ChargeP_AssImpay_12DernMsVsMoyan","L29_ChargeP_CoproAlur_DernMois","L30_ChargeP_CoproAlur_12DernMs","L31_ChargeP_CoproAlur_Annuel_Moy","L32_ChargeP_CoproAlur_12DernMsVsMoyan","L33_Loyer_DernMois","L34_Loyer_12DernMs","L35_Loyer_Annuel_Moy","L36_Loyer_12DernMsVsMoyan","L37_ChargeLoc_DernMois","L38_ChargeLoc_12DernMs","L39_ChargeLoc_Annuel_Moy","L40_ChargeLoc_12DernMsVsMoyan","L41_TaxOrdur_DernMois","L42_TaxOrdur_12DernMs","L43_TaxOrdur_Annuel_Moy","L44_TaxOrdur_12DernMsVsMoyan"],columns=["Stalingrad","Pasteur","LutherK","Castille","Toutes"]) 
+
+#II-4) ===EXPORT VERS EXCEL DU DATA FRAME DU C.A. MENSUEL DE TOUTES RESIDENCES
+DF_CA_Toutes_Residences.to_excel(PathFileCA, sheet_name="CA_Mensuel")
+
+#II-5) ===EXPORT VERS EXCEL DU DATA FRAME DES STATS TABLEAU DE BORD DE TOUTES RESIDENCES
+DF_TDB_Global.to_excel(PathFileTDB, sheet_name="TDB Résidences")
